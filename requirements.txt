@@ -1,0 +1,4 @@
+streamlit
+pymupdf
+gdown
+python-docx
