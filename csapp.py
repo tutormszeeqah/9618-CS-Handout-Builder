@@ -6,18 +6,18 @@ from docx import Document
 from docx.shared import Inches
 from io import BytesIO
 
-# --- 1. COMPUTER SCIENCE CONFIGURATION (9618) ---
+# --- UPDATE THESE LINES ---
 SYLLABUS_CODE = "9618"
-# ⚠️ ACTION REQUIRED: Paste the Folder ID for "PYP_9618" here
-GD_FOLDER_ID = "1PPKMo-fIpHT9AV6r_sHautBOaddfOR2G" 
+# The ID of your "PYP_9618" folder
+GD_FOLDER_ID = "1EyAGHJrHt9sdo-1muDPrxVZtE9BGTcaB" 
 
-# These match your Google Drive subfolder names EXACTLY as described
 FOLDERS = {
-    "June QP": "9618_June_qp",
-    "Nov QP": "9618_Nov_qp",
+    "June QP": "9618_June_qp",  # Matches your screenshot
+    "Nov QP": "9618_Nov_qp",    # Ensure this matches your Nov folder name
     "June MS": "9618_June_ms",
     "Nov MS": "9618_Nov_ms"
 }
+# --- 1. COMPUTER SCIENCE CONFIGURATION (9618) ---
 
 # Create local directories to mirror your Drive
 for folder in FOLDERS.values():
