@@ -164,7 +164,7 @@ with tab3:
 with tab4:
     st.header("Admin Panel")
     pwd = st.text_input("Password", type="password")
-    if pwd == st.secrets.get("ADMIN_PASSWORD", "admin123"):
+    if pwd == st.secrets["ADMIN_PASSWORD"]:
         st.success("Admin Access Granted")
         u_col, d_col = st.columns(2)
         with u_col:
