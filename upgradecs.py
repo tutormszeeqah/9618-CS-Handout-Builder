@@ -1,4 +1,4 @@
-#********** The Upgraded Version of Computer Science PYP Portal ***********
+# ********** The Upgraded Version of Computer Science PYP Portal ***********
 import io
 import os
 import re
@@ -14,7 +14,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 # Google API Libraries
-from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
@@ -24,12 +24,13 @@ from googleapiclient.errors import HttpError
 # Parent Folder: 9618PYPArchive
 # ==========================================
 SYLLABUS_CODE = "9618"
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
-# Paste your individual subfolder IDs below when you have them ready
+# Reconfigured with your actual Google Drive subfolder IDs
 FOLDER_IDS = {
-    "theory": "PASTE_9618Theory_FOLDER_ID_HERE",    
-    "practical": "PASTE_9618Practical_FOLDER_ID_HERE", 
-    "zips": "PASTE_9618Zip_FOLDER_ID_HERE"        
+    "theory": "1BPW1HYttzzNLQ5j2HAlwEBU8qO-QuzBQ",    
+    "practical": "18mm1ZI83hu8mvRivte43cedMp50-XSus", 
+    "zips": "1V-p8DCoSik1_ghAY10cvdYKJ3GXfFT57"        
 }
 
 # Local folder names matching your Google Drive structure
@@ -89,19 +90,16 @@ def determine_target_folder(filename: str) -> tuple[str, str]:
     return None, None
 
 def build_drive_service():
-    """Authenticates and builds the Google Drive API service using Streamlit secrets."""
-    required_keys = ["refresh_token", "client_id", "client_secret"]
-    missing_keys = [k for k in required_keys if k not in st.secrets]
-    if missing_keys:
-        st.error(f"❌ Missing Secret Key(s): {', '.join(missing_keys)}")
-        return None
+    """Authenticates and builds the Google Drive API service using Streamlit Secrets (Service Account)."""
     try:
-        creds = Credentials(
-            token=None,
-            refresh_token=st.secrets["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=st.secrets["client_id"],
-            client_secret=st.secrets["client_secret"]
+        if "gcp_service_account" not in st.secrets:
+            st.error("❌ Key 'gcp_service_account' not found in st.secrets!")
+            return None
+
+        service_account_info = st.secrets["gcp_service_account"]
+        creds = ServiceAccountCredentials.from_service_account_info(
+            service_account_info, 
+            scopes=SCOPES
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
