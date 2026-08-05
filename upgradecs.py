@@ -321,8 +321,8 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "**🔍 Theory Search (P1, P2, P3)**", 
     "**💻 Practical Search (P4)**", 
     "**🛒 Handout Cart**", 
-    "**📦 Source Files & Evidence**", 
-    "**🔒 Upload PYP & Admin**"
+    "**📦 Source Files**", 
+    "**🔒 Upload PYP**"
 ])
 
 # --- TAB 1: THEORY SEARCH ---
