@@ -30,6 +30,38 @@ st.set_page_config(
 
 # Custom CSS Theme Implementation
 st.markdown("""
+#********************************************************************
+    /* Parameter input bars, select boxes, text inputs, and buttons */
+    div[data-baseweb="input"], 
+    div[data-baseweb="select"] > div, 
+    .stTextInput input, 
+    .stSelectbox select,
+    div[data-testid="stFileUploader"] {
+        color: #070F9C !important;
+        border-radius: 8px !important;
+        border: 1px solid #070F9C !important;
+    }
+
+    /* Target inner text inside text inputs, select boxes, and dropdown values */
+    input, 
+    div[data-baseweb="select"] span,
+    div[role="combobox"],
+    .stSelectbox div[data-testid="stMarkdownContainer"] p {
+        color: #070F9C !important;
+        font-weight: 600 !important;
+    }
+
+    /* Target dropdown arrow icons */
+    div[data-baseweb="select"] svg {
+        fill: #070F9C !important;
+    }
+
+    /* Input label text styling above controls */
+    label, .stWidgetLabel p {
+        color: #070F9C !important;
+        font-weight: bold !important;
+    }
+    #*******************************************************************
     <style>
     /* Main window frame background */
     .stApp {
