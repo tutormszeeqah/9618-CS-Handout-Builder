@@ -318,7 +318,7 @@ with st.sidebar:
 
 # --- NAVIGATION TABS ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "**🔍 Theory Search (P1, P2, P3)**", 
+    "**🔍 Theory Search (P1,2,3)**", 
     "**💻 Practical Search (P4)**", 
     "**🛒 Handout Cart**", 
     "**📦 Source Files**", 
@@ -396,12 +396,12 @@ with tab2:
                     if preview_img:
                         st.image(preview_img, caption=f"Preview Page {item['page'] + 1}", use_container_width=True)
                 with c2:
-                    if st.button("➕ Add to Basket", key=f"add_t2_{idx}"):
+                    if st.button("➕ Add to Cart Handout", key=f"add_t2_{idx}"):
                         st.session_state.handout_basket.append(item)
                         st.toast("Added to basket!")
                     if os.path.exists(item["path"]):
                         with open(item["path"], "rb") as pdf_file:
-                            st.download_button(label="📥 Download Full PDF", data=pdf_file, file_name=item["file"], mime="application/pdf", key=f"dl_t2_{idx}")
+                            st.download_button(label="📥 Download the full PYP PDF", data=pdf_file, file_name=item["file"], mime="application/pdf", key=f"dl_t2_{idx}")
 
 # --- TAB 3: HANDOUT CART & WORD BUILDER ---
 with tab3:
@@ -426,7 +426,7 @@ with tab3:
                 section.page_width = Inches(8.5)
                 section.page_height = Inches(11.5)
                 section.top_margin = Inches(0.5)
-                section.bottom_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.3)
                 section.left_margin = Inches(0.5)
                 section.right_margin = Inches(0.5)
 
@@ -448,7 +448,7 @@ with tab3:
                     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                     img_data = io.BytesIO(pix.tobytes("png"))
                     
-                    doc.add_picture(img_data, width=Inches(7.0), height=Inches(9.2))
+                    doc.add_picture(img_data, width=Inches(7.0), height=Inches(8.2))
                     
                     if i < len(st.session_state.handout_basket) - 1:
                         doc.add_page_break()
