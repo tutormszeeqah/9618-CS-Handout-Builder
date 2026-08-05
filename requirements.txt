@@ -1,8 +1,8 @@
 streamlit
-pymupdf
-gdown
-python-docx
 google-api-python-client
 google-auth
-google-auth-httplib2
 google-auth-oauthlib
+google-auth-httplib2
+PyMuPDF
+python-docx
+gdown
