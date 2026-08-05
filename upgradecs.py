@@ -20,6 +20,64 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 
 # ==========================================
+# 0. STREAMLIT PAGE CONFIG & CUSTOM STYLING
+# ==========================================
+st.set_page_config(
+    page_title="9618 Computer Science PYP Archives", 
+    page_icon="💻",
+    layout="wide"
+)
+
+# Custom CSS Theme Implementation
+st.markdown("""
+    <style>
+    /* Main window frame background */
+    .stApp {
+        background-color: #E6BBFC !important;
+    }
+
+    /* Sidebar background */
+    [data-testid="stSidebar"] {
+        background-color: #C663F8 !important;
+    }
+    
+    /* Ensure sidebar inner elements remain transparent to show sidebar color */
+    [data-testid="stSidebar"] > div:first-child {
+        background-color: #C663F8 !important;
+    }
+
+    /* Parameter input bars, select boxes, text inputs, and buttons */
+    div[data-baseweb="input"], 
+    div[data-baseweb="select"] > div, 
+    .stTextInput input, 
+    .stSelectbox select,
+    div[data-testid="stFileUploader"] {
+        background-color: #8809C8 !important;
+        color: #FFFFFF !important;
+        border-radius: 8px !important;
+        border: 1px solid #620092 !important;
+    }
+
+    /* Input label text styling for readability */
+    label, .stWidgetLabel p {
+        color: #2D004B !important;
+        font-weight: bold !important;
+    }
+
+    /* Input text color fix when typing */
+    input {
+        color: #FFFFFF !important;
+    }
+    
+    /* Placeholders inside inputs */
+    input::placeholder {
+        color: #E0C2F7 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+
+# ==========================================
 # 1. CONFIGURATION & DRIVE FOLDER MAPPING
 # ==========================================
 SYLLABUS_CODE = "9618"
@@ -31,7 +89,7 @@ FOLDER_IDS = {
     "zips": "1V-p8DCoSik1_ghAY10cvdYKJ3GXfFT57"        
 }
 
-# Local folder names matching your structure
+# Local folder names matching structure
 LOCAL_FOLDERS = {
     "theory": "9618Theory",
     "practical": "9618Practical",
@@ -41,6 +99,7 @@ LOCAL_FOLDERS = {
 # Ensure local storage directories exist
 for folder_path in LOCAL_FOLDERS.values():
     os.makedirs(folder_path, exist_ok=True)
+
 
 # ==========================================
 # 2. HELPER FUNCTIONS: WORD DOCUMENT XML
@@ -62,6 +121,7 @@ def add_page_number_to_run(run):
     r.append(instrText)
     r.append(fldChar2)
     r.append(fldChar3)
+
 
 # ==========================================
 # 3. AUTOMATIC ROUTING & GOOGLE DRIVE API
@@ -157,6 +217,7 @@ def perform_bulk_sync():
         messages.append(msg)
     return total_synced, messages
 
+
 # ==========================================
 # 4. SEARCH ENGINE & PREVIEW HELPER FUNCTIONS
 # ==========================================
@@ -213,6 +274,7 @@ def search_pdfs(keyword_list, folder_path, allowed_variants, match_mode="ALL"):
                 continue
     return results
 
+
 # ==========================================
 # 5. APP STATE INITIALIZATION & AUTO-SYNC
 # ==========================================
@@ -228,11 +290,10 @@ if 'has_auto_synced' not in st.session_state:
     with st.spinner("🚀 Waking up portal & auto-syncing files from Google Drive..."):
         perform_bulk_sync()
 
+
 # ==========================================
 # 6. STREAMLIT UI LAYOUT
 # ==========================================
-st.set_page_config(page_title="9618 Computer Science PYP Archives", layout="wide")
-
 st.title("GCE A/AS LEVEL COMPUTER SCIENCE")
 st.subheader("💻 9618 Computer Science PYP Resource Library")
 
