@@ -1,4 +1,4 @@
-# ********** The Upgraded Version of Computer Science PYP Portal ***********
+# ********** Computer Science 9618 PYP Portal ***********
 import io
 import os
 import re
@@ -14,33 +14,31 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 # Google API Libraries
-from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 
 # ==========================================
 # 1. CONFIGURATION & DRIVE FOLDER MAPPING
-# Parent Folder: 9618PYPArchive
 # ==========================================
 SYLLABUS_CODE = "9618"
-SCOPES = ['https://www.googleapis.com/auth/drive']
 
-# Reconfigured with your actual Google Drive subfolder IDs
+# Google Drive subfolder IDs
 FOLDER_IDS = {
     "theory": "1BPW1HYttzzNLQ5j2HAlwEBU8qO-QuzBQ",    
     "practical": "18mm1ZI83hu8mvRivte43cedMp50-XSus", 
     "zips": "1V-p8DCoSik1_ghAY10cvdYKJ3GXfFT57"        
 }
 
-# Local folder names matching your Google Drive structure
+# Local folder names matching your structure
 LOCAL_FOLDERS = {
     "theory": "9618Theory",
     "practical": "9618Practical",
     "zips": "9618Zip"
 }
 
-# Ensure local directories exist
+# Ensure local storage directories exist
 for folder_path in LOCAL_FOLDERS.values():
     os.makedirs(folder_path, exist_ok=True)
 
@@ -69,37 +67,37 @@ def add_page_number_to_run(run):
 # 3. AUTOMATIC ROUTING & GOOGLE DRIVE API
 # ==========================================
 def determine_target_folder(filename: str) -> tuple[str, str]:
-    """
-    Determines which folder a file belongs to based on standard CS naming conventions.
-    Returns a tuple: (folder_key, display_label).
-    """
+    """Determines destination folder based on Cambridge 9618 file naming conventions."""
     filename_lower = filename.lower()
     
     # 1. Zip / Source Files / Evidence Documents -> 9618Zip
     if filename_lower.endswith(".zip") or "_sf_" in filename_lower or "_evi_" in filename_lower or "_src_" in filename_lower:
         return "zips", "9618Zip (Source Files & Evidence Files)"
     
-    # 2. Practical Papers (Paper 4 -> Variants 41, 42, 43) -> 9618Practical
+    # 2. Practical Papers (Paper 4) -> 9618Practical
     if re.search(r'_(qp|ms)_4[123]\b', filename_lower):
         return "practical", "9618Practical (Paper 4)"
     
-    # 3. Theory Papers (Papers 1, 2, 3 -> Variants 11-13, 21-23, 31-33) -> 9618Theory
+    # 3. Theory Papers (Papers 1, 2, 3) -> 9618Theory
     if re.search(r'_(qp|ms)_(1[123]|2[123]|3[123])\b', filename_lower):
         return "theory", "9618Theory (Papers 1, 2, 3)"
     
     return None, None
 
 def build_drive_service():
-    """Authenticates and builds the Google Drive API service using Streamlit Secrets (Service Account)."""
+    """Authenticates and builds Google Drive API service using User OAuth 2.0 Credentials."""
+    required_keys = ["refresh_token", "client_id", "client_secret"]
+    missing_keys = [k for k in required_keys if k not in st.secrets]
+    if missing_keys:
+        st.error(f"❌ Missing Secret Key(s) in secrets.toml: {', '.join(missing_keys)}")
+        return None
     try:
-        if "gcp_service_account" not in st.secrets:
-            st.error("❌ Key 'gcp_service_account' not found in st.secrets!")
-            return None
-
-        service_account_info = st.secrets["gcp_service_account"]
-        creds = ServiceAccountCredentials.from_service_account_info(
-            service_account_info, 
-            scopes=SCOPES
+        creds = Credentials(
+            token=None,
+            refresh_token=st.secrets["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=st.secrets["client_id"],
+            client_secret=st.secrets["client_secret"]
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
@@ -107,7 +105,7 @@ def build_drive_service():
         return None
 
 def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
-    """Uploads a file directly into the designated Google Drive subfolder."""
+    """Uploads file to Google Drive using personal user storage quota."""
     service = build_drive_service()
     if not service:
         return None
@@ -122,7 +120,7 @@ def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
         return None
 
 def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
-    """Downloads missing files from a specific Google Drive subfolder to local storage."""
+    """Downloads files missing from local storage from the specified Google Drive subfolder."""
     service = build_drive_service()
     if not service:
         return 0, "Failed to authenticate."
@@ -150,7 +148,7 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
         return 0, f"Sync error: {e}"
 
 def perform_bulk_sync():
-    """Triggers synchronization for all 3 subfolders."""
+    """Syncs all three subfolders (Theory, Practical, Zip)."""
     total_synced = 0
     messages = []
     for f_key in ["theory", "practical", "zips"]:
@@ -163,7 +161,7 @@ def perform_bulk_sync():
 # 4. SEARCH ENGINE & PREVIEW HELPER FUNCTIONS
 # ==========================================
 def render_pdf_page_preview(filepath: str, page_num: int):
-    """Renders a single PDF page into a PNG image preview."""
+    """Renders a PDF page to PNG format for online preview."""
     try:
         doc = fitz.open(filepath)
         page = doc.load_page(page_num)
@@ -176,7 +174,7 @@ def render_pdf_page_preview(filepath: str, page_num: int):
         return None
 
 def search_pdfs(keyword_list, folder_path, allowed_variants, match_mode="ALL"):
-    """Scans local PDFs for target keywords matching specified paper variants."""
+    """Scans local PDFs for specified target terms."""
     results = []
     if not os.path.exists(folder_path):
         return results
@@ -187,8 +185,6 @@ def search_pdfs(keyword_list, folder_path, allowed_variants, match_mode="ALL"):
     for file in os.listdir(folder_path):
         if file.endswith(".pdf"):
             base_name = os.path.splitext(file)[0]
-            
-            # Skip confidential files or source index files
             if "_ci_" in file or "_sf_" in file:
                 continue
                 
@@ -233,33 +229,9 @@ if 'has_auto_synced' not in st.session_state:
         perform_bulk_sync()
 
 # ==========================================
-# 6. STREAMLIT UI LAYOUT & STYLING
+# 6. STREAMLIT UI LAYOUT
 # ==========================================
 st.set_page_config(page_title="9618 Computer Science PYP Archives", layout="wide")
-
-MAIN_BG_COLOR = "#8FBFFA"     
-SIDEBAR_BG_COLOR = "#A1FA8F"  
-INPUT_BAR_COLOR = "#D563F8"   
-
-st.markdown(
-    f"""
-    <style>
-    .stAppViewContainer {{ background-color: {MAIN_BG_COLOR}; }}
-    .stHeader {{ background-color: {MAIN_BG_COLOR}; }}
-    [data-testid="stSidebar"] {{ background-color: {SIDEBAR_BG_COLOR}; }}
-    div[data-testid="stTextInput"] input, div[data-baseweb="input"] {{
-        background-color: {INPUT_BAR_COLOR} !important; border-radius: 8px !important;
-    }}
-    div[data-testid="stSelectbox"] div {{
-        background-color: {INPUT_BAR_COLOR} !important; border-radius: 8px !important;
-    }}
-    [data-testid="stFileUploaderDropzone"] {{
-        background-color: {INPUT_BAR_COLOR} !important; border-radius: 8px !important;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 st.title("GCE A/AS LEVEL COMPUTER SCIENCE")
 st.subheader("💻 9618 Computer Science PYP Resource Library")
@@ -405,7 +377,7 @@ with tab3:
                 header_run.font.size = Pt(10)
                 add_page_number_to_run(header_run)
 
-                doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+                doc.add_heading(f'{SYLLABUS_CODE} Computer Science Handout', level=1)
 
                 for i, item in enumerate(st.session_state.handout_basket):
                     doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
@@ -475,10 +447,6 @@ with tab4:
 
         with open(found_file_path, "rb") as f:
             st.download_button(label=f"📥 Download {matched_filename}", data=f, file_name=matched_filename, mime=mime_type, key="dl_ci_file")
-        if matched_filename.endswith(".pdf"):
-            preview = render_pdf_page_preview(found_file_path, 0)
-            if preview:
-                st.image(preview, caption=f"Preview of {matched_filename} (Page 1)", width=600)
     else:
         st.warning(f"No Source File / Evidence Document found for `{SYLLABUS_CODE}_{session_code}{short_year}` {z_paper_label}.")
 
@@ -506,26 +474,17 @@ with tab5:
                             file_bytes = uploaded_file.read()
                             local_dest_dir = LOCAL_FOLDERS[folder_key]
                             local_save_path = os.path.join(local_dest_dir, uploaded_file.name)
+                            
+                            # Save locally first
                             with open(local_save_path, "wb") as f:
                                 f.write(file_bytes)
+                                
+                            # Upload to Google Drive using OAuth user credentials
                             drive_result = upload_file_to_drive(file_bytes, uploaded_file.name, FOLDER_IDS[folder_key], uploaded_file.type)
                             if drive_result:
                                 st.success(f"✅ Uploaded `{uploaded_file.name}` successfully!")
 
-# ==========================================
-# 7. FOOTER & SIDEBAR METRIC POPULATION
-# ==========================================
-st.markdown("---")
-st.markdown(
-    """
-    <div style="text-align: center; width: 100%;">
-        <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9618 Computer Science Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Creator: HNHaziqah Computer Science PTES</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+# Populate metric display in sidebar
 sidebar_metric_placeholder.metric(
     label="Saved Pages in Basket", 
     value=len(st.session_state.handout_basket)
