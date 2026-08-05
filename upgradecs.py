@@ -66,7 +66,7 @@ st.markdown("""
 
     /* Input text color fix when typing */
     input {
-        color: #FFFFFF !important;
+        color: #070F9C !important;
     }
     
     /* Placeholders inside inputs */
