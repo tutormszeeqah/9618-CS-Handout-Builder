@@ -53,7 +53,7 @@ st.markdown("""
     .stSelectbox select,
     div[data-testid="stFileUploader"] {
         background-color: #BBFCBC !important;
-        color: #FFFFFF !important;
+        color: #070F9C !important;
         border-radius: 8px !important;
         border: 1px solid #620092 !important;
     }
