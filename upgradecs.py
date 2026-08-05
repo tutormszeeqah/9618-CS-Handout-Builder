@@ -553,8 +553,8 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align: center; width: 100%;">
-        <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9700 Biology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Developer: HNHaziqah@HHartini Computer Science PTES</p>
+        <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9618 Computer Science Resource Portal ✨</p>
+        <p style="color: gray; font-size: 14px;">Developer: HNHaziqah@HHartini Computer Science Tutor PTES</p>
     </div>
     """,
     unsafe_allow_html=True
