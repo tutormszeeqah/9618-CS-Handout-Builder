@@ -175,8 +175,8 @@ def create_worksheet_docx(basket_items: list) -> io.BytesIO:
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
         img_data = io.BytesIO(pix.tobytes("png"))
 
-        # Specified Image Dimensions (Width 8.0", Height 9.5")
-        doc.add_picture(img_data, width=Inches(8.0), height=Inches(9.5))
+        # Specified Image Dimensions (Width 7.6", Height 9")
+        doc.add_picture(img_data, width=Inches(7.6), height=Inches(9))
 
         if idx < len(basket_items) - 1:
             doc.add_page_break()
@@ -430,7 +430,7 @@ with tab4:
     with sf_col3:
         sf_variant = st.selectbox(
             "Select Practical Variant", 
-            ["41", "42", "43"], 
+            ["42", "43"], 
             index=2 if "June" in sf_month else 1,
             key="sf_var"
         )
@@ -485,7 +485,7 @@ with tab5:
         as_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="as_mth")
         month_code = "s" if "June" in as_month else "w"
     with col_v:
-        as_variant = st.selectbox("Select Variant Component", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="as_var")
+        as_variant = st.selectbox("Select Variant Component", ["11", "13", "22", "23", "32", "33", "42", "43"], key="as_var")
 
     short_year = as_year.strip()[-2:] if len(as_year.strip()) >= 2 else ""
     expected_ms_filename = f"{SYLLABUS_CODE}_{month_code}{short_year}_ms_{as_variant}.pdf"
