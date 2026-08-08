@@ -147,6 +147,7 @@ def perform_bulk_sync():
 # 3. HELPER FUNCTIONS
 # ==========================================
 def add_page_number_to_run(run):
+    """Adds a dynamic word field for Page numbers in header/footer."""
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
     instrText = OxmlElement('w:instrText')
@@ -164,6 +165,7 @@ def add_page_number_to_run(run):
     r.append(fldChar3)
 
 def render_pdf_page_preview(filepath: str, page_num: int = 0):
+    """Renders a single PDF page into PNG bytes for preview."""
     try:
         doc = fitz.open(filepath)
         page = doc.load_page(page_num)
@@ -207,7 +209,6 @@ def execute_pdf_search(folder_key: str, keyword_string: str) -> list[dict]:
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
 
-# Persistent Search Results State (Prevents disappearing on button click)
 if 'theory_search_results' not in st.session_state:
     st.session_state.theory_search_results = []
 if 'practical_search_results' not in st.session_state:
@@ -242,21 +243,20 @@ with st.sidebar:
         st.session_state.handout_basket = []
         st.rerun()
 
-# --- NAVIGATION TABS ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "🔍 Theory Search", 
-    "💻 Practical Search",
-    "🔑 Answer Scheme", 
-    "📅 View Exam Papers", 
-    "📝 Export Handout", 
-    "📦 Source Files", 
-    "⚙️ Admin Dashboard"
+# --- RE-ORDERED NAVIGATION TABS ---
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "1. 🔍 Search Keyword Theory", 
+    "2. 💻 Search Keyword Practical", 
+    "3. 🛒 HandOut / Cart", 
+    "4. 📦 Source File", 
+    "5. 🔑 Answer Scheme", 
+    "6. ⚙️ Upload PYP Admin"
 ])
 
 
-# --- TAB 1: THEORY SEARCH (P1 & P3) ---
+# --- TAB 1: SEARCH KEYWORD THEORY ---
 with tab1:
-    st.header("🔍 Search Theory Papers (Papers 1 & 3)")
+    st.header("🔍 Search Keyword (Theory - Papers 1 & 3)")
     t_kw = st.text_input("Enter Keywords for Theory", placeholder="e.g., binary tree, recursion, pipeline", key="theory_kw")
 
     if st.button("Search Theory Papers", type="primary", key="btn_search_theory"):
@@ -276,7 +276,6 @@ with tab1:
                     if preview_img:
                         st.image(preview_img, use_container_width=True)
                 with c2:
-                    # 1. Add to Basket
                     if st.button("➕ Add to Basket", key=f"add_t_{idx}"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added Page {item['page'] + 1} to basket!")
@@ -284,7 +283,6 @@ with tab1:
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # 2. Download Full PDF
                     with open(item["path"], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -295,9 +293,9 @@ with tab1:
                         )
 
 
-# --- TAB 2: PRACTICAL SEARCH (P4) ---
+# --- TAB 2: SEARCH KEYWORD PRACTICAL ---
 with tab2:
-    st.header("💻 Search Practical Papers (Paper 4)")
+    st.header("💻 Search Keyword (Practical - Paper 4)")
     p_kw = st.text_input("Enter Keywords for Practical", placeholder="e.g., OOP, stacks, file handling", key="practical_kw")
 
     if st.button("Search Practical Papers", type="primary", key="btn_search_practical"):
@@ -317,7 +315,6 @@ with tab2:
                     if preview_img:
                         st.image(preview_img, use_container_width=True)
                 with c2:
-                    # 1. Add to Basket
                     if st.button("➕ Add to Basket", key=f"add_p_{idx}"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added Page {item['page'] + 1} to basket!")
@@ -325,7 +322,6 @@ with tab2:
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # 2. Download Full PDF
                     with open(item["path"], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -336,8 +332,126 @@ with tab2:
                         )
 
 
-# --- TAB 3: ANSWER SCHEME FINDER ---
-with tab3:
+# --- TAB 3: HANDOUT / CART ---
+with tab5 if False else tab3:
+    st.header("🛒 HandOut / Cart Management")
+    
+    if st.session_state.handout_basket:
+        st.subheader("Selected Pages in Your Cart")
+        st.markdown("Review your items below. Click **DELETE** to remove an individual page.")
+        
+        # Display each item with an individual Delete button
+        for idx, item in enumerate(st.session_state.handout_basket):
+            col_info, col_action = st.columns([4, 1])
+            with col_info:
+                st.markdown(f"📄 **Item {idx + 1}:** `{item['file']}` — **Page {item['page'] + 1}**")
+            with col_action:
+                if st.button("🔴 DELETE", key=f"del_item_{idx}"):
+                    st.session_state.handout_basket.pop(idx)
+                    st.toast(f"Removed item {idx + 1} from cart.")
+                    st.rerun()
+            st.markdown("---")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📝 Export Options")
+        
+        if st.button("🪄 Export Handout to Word (.docx)", type="primary", use_container_width=True):
+            try:
+                doc = Document()
+                section = doc.sections[0]
+                section.orientation = WD_ORIENT.PORTRAIT
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+
+                header = section.header
+                header_p = header.paragraphs[0]
+                header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                header_run = header_p.add_run("Page ")
+                add_page_number_to_run(header_run)
+
+                doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Worksheet', level=1)
+
+                for idx, item in enumerate(st.session_state.handout_basket):
+                    doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+                    pdf_doc = fitz.open(item['path'])
+                    page = pdf_doc.load_page(item['page'])
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    img_data = io.BytesIO(pix.tobytes("png"))
+                    doc.add_picture(img_data, width=Inches(6.5))
+                    if idx < len(st.session_state.handout_basket) - 1:
+                        doc.add_page_break()
+                    pdf_doc.close()
+
+                target_filename = f"{SYLLABUS_CODE}_CS_Worksheet.docx"
+                doc.save(target_filename)
+                with open(target_filename, "rb") as f:
+                    st.download_button(
+                        label="📥 Download Generated Word Document", 
+                        data=f, 
+                        file_name=target_filename,
+                        type="primary",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                st.error(f"Error generating Word file: {e}")
+    else:
+        st.info("🛒 Your cart is currently empty. Search for questions in Tab 1 or Tab 2 and click '➕ Add to Basket' to add pages here.")
+
+
+# --- TAB 4: SOURCE FILE ---
+with tab4:
+    st.header("📦 Download Practical Source Files & Evidence")
+    st.caption("Select the exam parameters to locate and download practical ZIP archives.")
+
+    sf_col1, sf_col2, sf_col3 = st.columns(3)
+    with sf_col1:
+        sf_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="sf_yr")
+    with sf_col2:
+        sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
+        sf_m_code = "s" if "June" in sf_month else "w"
+    with sf_col3:
+        sf_variant = st.selectbox(
+            "Select Practical Variant", 
+            ["41", "42", "43"], 
+            index=2 if "June" in sf_month else 1,
+            key="sf_var"
+        )
+
+    sf_short_year = sf_year[-2:]
+    
+    possible_zip_names = [
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_sf_{sf_variant}.zip",
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_zip_{sf_variant}.zip",
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_source_{sf_variant}.zip"
+    ]
+
+    st.markdown("---")
+    found_zip_path = None
+    matched_zip_name = ""
+
+    for zip_candidate in possible_zip_names:
+        candidate_path = os.path.join(LOCAL_FOLDERS["zips"], zip_candidate)
+        if os.path.exists(candidate_path):
+            found_zip_path = candidate_path
+            matched_zip_name = zip_candidate
+            break
+
+    if found_zip_path:
+        st.success(f"✅ Found Practical Source File Archive: `{matched_zip_name}`")
+        with open(found_zip_path, "rb") as zip_f:
+            st.download_button(
+                label=f"📥 Download Source File Archive ({matched_zip_name})",
+                data=zip_f,
+                file_name=matched_zip_name,
+                mime="application/zip",
+                type="primary"
+            )
+    else:
+        st.warning(f"⚠️ Source file archive for Year {sf_year}, Session {sf_month}, Variant {sf_variant} was not found in local storage.")
+
+
+# --- TAB 5: ANSWER SCHEME ---
+with tab5:
     st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
@@ -375,142 +489,9 @@ with tab3:
         st.warning(f"⚠️ Answer Scheme `{expected_ms_filename}` was not found locally.")
 
 
-# --- TAB 4: VIEW EXAM PAPERS ---
-with tab4:
-    st.header("📅 Download Full Question Papers & Marking Schemes")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        v_year = st.selectbox("Year", [str(y) for y in range(2026, 2020, -1)], key="vp_yr")
-    with c2:
-        v_month = st.selectbox("Session", ["June (s)", "November (w)"], key="vp_mth")
-        m_code = "s" if "June" in v_month else "w"
-    with c3:
-        v_paper = st.selectbox("Variant", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="vp_var")
-
-    short_y = v_year[-2:]
-    qp_name = f"{SYLLABUS_CODE}_{m_code}{short_y}_qp_{v_paper}.pdf"
-    ms_name = f"{SYLLABUS_CODE}_{m_code}{short_y}_ms_{v_paper}.pdf"
-
-    col_q, col_m = st.columns(2)
-    with col_q:
-        qp_path = os.path.join(LOCAL_FOLDERS["practical"] if v_paper.startswith("4") else LOCAL_FOLDERS["theory"], qp_name)
-        if os.path.exists(qp_path):
-            st.success(f"Found QP: `{qp_name}`")
-            with open(qp_path, "rb") as f:
-                st.download_button("📥 Download Question Paper", f, file_name=qp_name, use_container_width=True)
-        else:
-            st.info(f"QP `{qp_name}` not found locally.")
-
-    with col_m:
-        ms_path = os.path.join(LOCAL_FOLDERS["answer_scheme"], ms_name)
-        if os.path.exists(ms_path):
-            st.success(f"Found MS: `{ms_name}`")
-            with open(ms_path, "rb") as f:
-                st.download_button("📥 Download Marking Scheme", f, file_name=ms_name, use_container_width=True)
-        else:
-            st.info(f"MS `{ms_name}` not found locally.")
-
-
-# --- TAB 5: EXPORT HANDOUT ---
-with tab5:
-    st.header("📝 Generate Custom Word Worksheet")
-    if st.session_state.handout_basket:
-        st.write(f"Selected Pages: **{len(st.session_state.handout_basket)}**")
-        if st.button("🪄 Export Handout to Word (.docx)", type="primary"):
-            try:
-                doc = Document()
-                section = doc.sections[0]
-                section.orientation = WD_ORIENT.PORTRAIT
-                section.top_margin = Inches(0.5)
-                section.bottom_margin = Inches(0.5)
-
-                header = section.header
-                header_p = header.paragraphs[0]
-                header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                header_run = header_p.add_run("Page ")
-                add_page_number_to_run(header_run)
-
-                doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Worksheet', level=1)
-
-                for idx, item in enumerate(st.session_state.handout_basket):
-                    doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
-                    pdf_doc = fitz.open(item['path'])
-                    page = pdf_doc.load_page(item['page'])
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_data = io.BytesIO(pix.tobytes("png"))
-                    doc.add_picture(img_data, width=Inches(6.5))
-                    if idx < len(st.session_state.handout_basket) - 1:
-                        doc.add_page_break()
-                    pdf_doc.close()
-
-                target_filename = f"{SYLLABUS_CODE}_CS_Worksheet.docx"
-                doc.save(target_filename)
-                with open(target_filename, "rb") as f:
-                    st.download_button("📥 Download Word Document", f, file_name=target_filename)
-            except Exception as e:
-                st.error(f"Error generating Word file: {e}")
-    else:
-        st.info("Basket is empty. Add pages from Tab 1 or Tab 2.")
-
-
-# --- TAB 6: SOURCE FILES (FILTERED) ---
+# --- TAB 6: UPLOAD PYP ADMIN ---
 with tab6:
-    st.header("📦 Download Practical Source Files & Evidence")
-    st.caption("Select the exam parameters to locate and download practical ZIP archives.")
-
-    sf_col1, sf_col2, sf_col3 = st.columns(3)
-    with sf_col1:
-        sf_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="sf_yr")
-    with sf_col2:
-        sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
-        sf_m_code = "s" if "June" in sf_month else "w"
-    with sf_col3:
-        # Default variant suggestion based on exam session
-        default_variant = "43" if "June" in sf_month else "42"
-        sf_variant = st.selectbox(
-            "Select Practical Variant", 
-            ["41", "42", "43"], 
-            index=2 if "June" in sf_month else 1,
-            key="sf_var"
-        )
-
-    sf_short_year = sf_year[-2:]
-    
-    # Try different common zip naming conventions
-    possible_zip_names = [
-        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_sf_{sf_variant}.zip",
-        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_zip_{sf_variant}.zip",
-        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_source_{sf_variant}.zip"
-    ]
-
-    st.markdown("---")
-    found_zip_path = None
-    matched_zip_name = ""
-
-    for zip_candidate in possible_zip_names:
-        candidate_path = os.path.join(LOCAL_FOLDERS["zips"], zip_candidate)
-        if os.path.exists(candidate_path):
-            found_zip_path = candidate_path
-            matched_zip_name = zip_candidate
-            break
-
-    if found_zip_path:
-        st.success(f"✅ Found Practical Source File Archive: `{matched_zip_name}`")
-        with open(found_zip_path, "rb") as zip_f:
-            st.download_button(
-                label=f"📥 Download Source File Archive ({matched_zip_name})",
-                data=zip_f,
-                file_name=matched_zip_name,
-                mime="application/zip",
-                type="primary"
-            )
-    else:
-        st.warning(f"⚠️ Source file archive for Year {sf_year}, Session {sf_month}, Variant {sf_variant} was not found in local storage.")
-
-
-# --- TAB 7: ADMIN DASHBOARD ---
-with tab7:
-    st.header("⚙️ Admin Dashboard")
+    st.header("⚙️ Upload PYP Admin Dashboard")
     st.caption("Direct shortcuts to Google Drive folder dashboards for fast file uploads and management.")
 
     admin_pwd = st.secrets.get("ADMIN_PASSWORD", "")
@@ -536,7 +517,6 @@ with tab7:
 
     elif pwd_input:
         st.error("❌ Incorrect Admin Password.")
-
 
 # ==========================================
 # 6. PORTAL FOOTER
