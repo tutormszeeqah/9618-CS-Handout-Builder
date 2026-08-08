@@ -57,7 +57,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
 # ==========================================
 # 1. CONFIGURATION & DIRECTORY SETUP
 # ==========================================
@@ -73,7 +72,6 @@ LOCAL_FOLDERS = {
 
 for folder_path in LOCAL_FOLDERS.values():
     os.makedirs(folder_path, exist_ok=True)
-
 
 # ==========================================
 # 2. SERVICE ACCOUNT AUTHENTICATION & SYNC
@@ -142,7 +140,6 @@ def perform_bulk_sync():
         messages.append(msg)
     return total_synced, messages
 
-
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
@@ -202,7 +199,6 @@ def execute_pdf_search(folder_key: str, keyword_string: str) -> list[dict]:
                     continue
     return results
 
-
 # ==========================================
 # 4. APP STATE INITIALIZATION
 # ==========================================
@@ -218,7 +214,6 @@ if 'has_auto_synced' not in st.session_state:
     st.session_state.has_auto_synced = True
     with st.spinner("🚀 Waking up portal & auto-syncing files via Service Account..."):
         perform_bulk_sync()
-
 
 # ==========================================
 # 5. STREAMLIT UI LAYOUT
@@ -245,21 +240,20 @@ with st.sidebar:
 
 # --- RE-ORDERED NAVIGATION TABS ---
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "1. 🔍 Search Keyword Theory", 
-    "2. 💻 Search Keyword Practical", 
-    "3. 🛒 HandOut / Cart", 
-    "4. 📦 Source File", 
-    "5. 🔑 Answer Scheme", 
-    "6. ⚙️ Upload PYP Admin"
+    "🔍 Theory", 
+    "💻 Practical", 
+    "🛒 HandOut/Cart", 
+    "📦 Source File", 
+    "🔑 Answer Scheme", 
+    "⚙️ Upload PYP Admin"
 ])
-
 
 # --- TAB 1: SEARCH KEYWORD THEORY ---
 with tab1:
-    st.header("🔍 Search Keyword (Theory - Papers 1 & 3)")
+    st.header("🔍 Search Keyword (Theory - Papers 1,2,3)")
     t_kw = st.text_input("Enter Keywords for Theory", placeholder="e.g., binary tree, recursion, pipeline", key="theory_kw")
 
-    if st.button("Search Theory Papers", type="primary", key="btn_search_theory"):
+    if st.button("Search Keyword", type="primary", key="btn_search_theory"):
         if t_kw.strip():
             with st.spinner("Scanning Theory PDFs..."):
                 st.session_state.theory_search_results = execute_pdf_search("theory", t_kw)
@@ -276,7 +270,7 @@ with tab1:
                     if preview_img:
                         st.image(preview_img, use_container_width=True)
                 with c2:
-                    if st.button("➕ Add to Basket", key=f"add_t_{idx}"):
+                    if st.button("➕ Add to Cart", key=f"add_t_{idx}"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added Page {item['page'] + 1} to basket!")
                         st.rerun()
@@ -292,13 +286,12 @@ with tab1:
                             key=f"dl_t_{idx}"
                         )
 
-
 # --- TAB 2: SEARCH KEYWORD PRACTICAL ---
 with tab2:
     st.header("💻 Search Keyword (Practical - Paper 4)")
     p_kw = st.text_input("Enter Keywords for Practical", placeholder="e.g., OOP, stacks, file handling", key="practical_kw")
 
-    if st.button("Search Practical Papers", type="primary", key="btn_search_practical"):
+    if st.button("Search Keyword", type="primary", key="btn_search_practical"):
         if p_kw.strip():
             with st.spinner("Scanning Practical PDFs..."):
                 st.session_state.practical_search_results = execute_pdf_search("practical", p_kw)
@@ -315,7 +308,7 @@ with tab2:
                     if preview_img:
                         st.image(preview_img, use_container_width=True)
                 with c2:
-                    if st.button("➕ Add to Basket", key=f"add_p_{idx}"):
+                    if st.button("➕ Add to Cart", key=f"add_p_{idx}"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added Page {item['page'] + 1} to basket!")
                         st.rerun()
@@ -331,10 +324,9 @@ with tab2:
                             key=f"dl_p_{idx}"
                         )
 
-
 # --- TAB 3: HANDOUT / CART ---
 with tab5 if False else tab3:
-    st.header("🛒 HandOut / Cart Management")
+    st.header("🛒 Worksheet Management")
     
     if st.session_state.handout_basket:
         st.subheader("Selected Pages in Your Cart")
@@ -355,7 +347,7 @@ with tab5 if False else tab3:
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📝 Export Options")
         
-        if st.button("🪄 Export Handout to Word (.docx)", type="primary", use_container_width=True):
+        if st.button("🪄 Download to Word document", type="primary", use_container_width=True):
             try:
                 doc = Document()
                 section = doc.sections[0]
@@ -395,8 +387,7 @@ with tab5 if False else tab3:
             except Exception as e:
                 st.error(f"Error generating Word file: {e}")
     else:
-        st.info("🛒 Your cart is currently empty. Search for questions in Tab 1 or Tab 2 and click '➕ Add to Basket' to add pages here.")
-
+        st.info("🛒 Your cart is currently empty. Search for questions in Tab 1 or Tab 2 and click '➕ Add to Cart' to merge pages here.")
 
 # --- TAB 4: SOURCE FILE ---
 with tab4:
@@ -405,14 +396,14 @@ with tab4:
 
     sf_col1, sf_col2, sf_col3 = st.columns(3)
     with sf_col1:
-        sf_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="sf_yr")
+        sf_year = st.selectbox("Select Year", [str(y) for y in range(2028, 2020, -1)], key="sf_yr")
     with sf_col2:
         sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
         sf_m_code = "s" if "June" in sf_month else "w"
     with sf_col3:
         sf_variant = st.selectbox(
             "Select Practical Variant", 
-            ["41", "42", "43"], 
+            ["42", "43"], 
             index=2 if "June" in sf_month else 1,
             key="sf_var"
         )
@@ -455,12 +446,12 @@ with tab5:
     st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
-        as_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="as_yr")
+        as_year = st.selectbox("Select Year", [str(y) for y in range(2028, 2020, -1)], key="as_yr")
     with col_m:
         as_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="as_mth")
         month_code = "s" if "June" in as_month else "w"
     with col_v:
-        as_variant = st.selectbox("Select Variant Component", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="as_var")
+        as_variant = st.selectbox("Select Variant Component", ["11", "13", "22", "23", "32", "33", "42", "43"], key="as_var")
 
     short_year = as_year[-2:]
     expected_ms_filename = f"{SYLLABUS_CODE}_{month_code}{short_year}_ms_{as_variant}.pdf"
@@ -487,7 +478,6 @@ with tab5:
             doc.close()
     else:
         st.warning(f"⚠️ Answer Scheme `{expected_ms_filename}` was not found locally.")
-
 
 # --- TAB 6: UPLOAD PYP ADMIN ---
 with tab6:
