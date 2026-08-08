@@ -148,39 +148,58 @@ def perform_bulk_sync():
 # 3. HELPER FUNCTIONS
 # ==========================================
 def render_year_selector(key_prefix: str, default_year: int = None) -> int:
-    """Generates an interactive year selector with + and - buttons dynamically."""
+    """
+    Generates an interactive year selector with fully working + and - buttons
+    using Streamlit callback functions (on_click).
+    """
     if default_year is None:
         default_year = datetime.datetime.now().year
 
-    state_key = f"{key_prefix}_selected_year"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = default_year
+    # Key assigned directly to st.number_input
+    input_key = f"{key_prefix}_year_input"
+
+    # Initialize state for this specific widget key
+    if input_key not in st.session_state:
+        st.session_state[input_key] = default_year
+
+    # Callback functions executed BEFORE script re-runs
+    def increment_year():
+        if st.session_state[input_key] < 2050:
+            st.session_state[input_key] += 1
+
+    def decrement_year():
+        if st.session_state[input_key] > 2020:
+            st.session_state[input_key] -= 1
 
     st.markdown("<label style='font-weight: bold;'>Select Year</label>", unsafe_allow_html=True)
     col_dec, col_val, col_inc = st.columns([1, 2, 1])
 
     with col_dec:
-        if st.button("➖", key=f"{key_prefix}_dec_btn", use_container_width=True):
-            st.session_state[state_key] -= 1
-            st.rerun()
+        st.button(
+            "➖", 
+            key=f"{key_prefix}_dec_btn", 
+            on_click=decrement_year, 
+            use_container_width=True
+        )
 
     with col_val:
-        current_val = st.number_input(
+        year_val = st.number_input(
             "Year",
             min_value=2020,
             max_value=2050,
-            value=st.session_state[state_key],
-            key=f"{key_prefix}_num_input",
+            key=input_key,
             label_visibility="collapsed"
         )
-        st.session_state[state_key] = current_val
 
     with col_inc:
-        if st.button("➕", key=f"{key_prefix}_inc_btn", use_container_width=True):
-            st.session_state[state_key] += 1
-            st.rerun()
+        st.button(
+            "➕", 
+            key=f"{key_prefix}_inc_btn", 
+            on_click=increment_year, 
+            use_container_width=True
+        )
 
-    return st.session_state[state_key]
+    return year_val
 
 def add_page_number_to_run(run):
     """Adds a dynamic Word field for Page numbers in header/footer."""
@@ -390,7 +409,7 @@ with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📝 Export Options")
         
-        if st.button("🪄 Download to Word document", type="primary", use_container_width=True):
+        if st.button("🪄 Generate and Merged the Pages into ONE handOut", type="primary", use_container_width=True):
             try:
                 doc = Document()
                 section = doc.sections[0]
@@ -419,8 +438,8 @@ with tab3:
                     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                     img_data = io.BytesIO(pix.tobytes("png"))
                     
-                    # --- SPECIFIED IMAGE DIMENSIONS (Width 8.0", Height 9.5") ---
-                    doc.add_picture(img_data, width=Inches(8.0), height=Inches(9.5))
+                    # --- SPECIFIED IMAGE DIMENSIONS (Width 6.8", Height 9") ---
+                    doc.add_picture(img_data, width=Inches(6.8), height=Inches(9))
                     
                     if idx < len(st.session_state.handout_basket) - 1:
                         doc.add_page_break()
@@ -449,7 +468,6 @@ with tab4:
 
     sf_col1, sf_col2, sf_col3 = st.columns(3)
     with sf_col1:
-        # Dynamic + / - Year Stepper
         selected_sf_year = render_year_selector("sf")
         sf_year = str(selected_sf_year)
     with sf_col2:
@@ -501,7 +519,6 @@ with tab5:
     st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
-        # Dynamic + / - Year Stepper
         selected_as_year = render_year_selector("as")
         as_year = str(selected_as_year)
     with col_m:
