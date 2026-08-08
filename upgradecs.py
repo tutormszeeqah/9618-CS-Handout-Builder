@@ -8,7 +8,6 @@ import streamlit as st
 # Word Document Libraries
 from docx import Document
 from docx.shared import Inches
-from docx.enum.section import WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -147,59 +146,46 @@ def perform_bulk_sync():
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
-def render_year_selector(key_prefix: str, default_year: int = None) -> int:
-    """
-    Generates an interactive year selector with fully working + and - buttons
-    using Streamlit callback functions (on_click).
-    """
-    if default_year is None:
-        default_year = datetime.datetime.now().year
+def create_worksheet_docx(basket_items: list) -> io.BytesIO:
+    """Generates the Word document in-memory and returns a BytesIO buffer."""
+    doc = Document()
+    section = doc.sections[0]
 
-    # Key assigned directly to st.number_input
-    input_key = f"{key_prefix}_year_input"
+    # Specified Document Dimensions & Margins
+    section.page_width = Inches(8.5)
+    section.page_height = Inches(11.5)
+    section.top_margin = Inches(0.4)
+    section.bottom_margin = Inches(0.4)
+    section.left_margin = Inches(0.5)
+    section.right_margin = Inches(0.5)
 
-    # Initialize state for this specific widget key
-    if input_key not in st.session_state:
-        st.session_state[input_key] = default_year
+    # Top Center Page Numbering
+    header = section.header
+    header_p = header.paragraphs[0]
+    header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    header_run = header_p.add_run("Page ")
+    add_page_number_to_run(header_run)
 
-    # Callback functions executed BEFORE script re-runs
-    def increment_year():
-        if st.session_state[input_key] < 2050:
-            st.session_state[input_key] += 1
+    doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Worksheet', level=1)
 
-    def decrement_year():
-        if st.session_state[input_key] > 2020:
-            st.session_state[input_key] -= 1
+    for idx, item in enumerate(basket_items):
+        doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        pdf_doc = fitz.open(item['path'])
+        page = pdf_doc.load_page(item['page'])
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        img_data = io.BytesIO(pix.tobytes("png"))
 
-    st.markdown("<label style='font-weight: bold;'>Select Year</label>", unsafe_allow_html=True)
-    col_dec, col_val, col_inc = st.columns([1, 2, 1])
+        # Specified Image Dimensions (Width 8.0", Height 9.5")
+        doc.add_picture(img_data, width=Inches(8.0), height=Inches(9.5))
 
-    with col_dec:
-        st.button(
-            "➖", 
-            key=f"{key_prefix}_dec_btn", 
-            on_click=decrement_year, 
-            use_container_width=True
-        )
+        if idx < len(basket_items) - 1:
+            doc.add_page_break()
+        pdf_doc.close()
 
-    with col_val:
-        year_val = st.number_input(
-            "Year",
-            min_value=2020,
-            max_value=2050,
-            key=input_key,
-            label_visibility="collapsed"
-        )
-
-    with col_inc:
-        st.button(
-            "➕", 
-            key=f"{key_prefix}_inc_btn", 
-            on_click=increment_year, 
-            use_container_width=True
-        )
-
-    return year_val
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def add_page_number_to_run(run):
     """Adds a dynamic Word field for Page numbers in header/footer."""
@@ -409,54 +395,17 @@ with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📝 Export Options")
         
-        if st.button("🪄 Generate and Merged the Pages into ONE handOut", type="primary", use_container_width=True):
-            try:
-                doc = Document()
-                section = doc.sections[0]
-                
-                # --- SPECIFIED PAGE DIMENSIONS & MARGINS ---
-                section.page_width = Inches(8.5)
-                section.page_height = Inches(11.5)
-                section.top_margin = Inches(0.4)
-                section.bottom_margin = Inches(0.4)
-                section.left_margin = Inches(0.5)
-                section.right_margin = Inches(0.5)
+        doc_buffer = create_worksheet_docx(st.session_state.handout_basket)
+        target_filename = f"{SYLLABUS_CODE}_CS_Worksheet.docx"
 
-                # --- TOP CENTER PAGE NUMBER HEADER ---
-                header = section.header
-                header_p = header.paragraphs[0]
-                header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                header_run = header_p.add_run("Page ")
-                add_page_number_to_run(header_run)
-
-                doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Worksheet', level=1)
-
-                for idx, item in enumerate(st.session_state.handout_basket):
-                    doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
-                    pdf_doc = fitz.open(item['path'])
-                    page = pdf_doc.load_page(item['page'])
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                    img_data = io.BytesIO(pix.tobytes("png"))
-                    
-                    # --- SPECIFIED IMAGE DIMENSIONS (Width 6.8", Height 9") ---
-                    doc.add_picture(img_data, width=Inches(6.8), height=Inches(9))
-                    
-                    if idx < len(st.session_state.handout_basket) - 1:
-                        doc.add_page_break()
-                    pdf_doc.close()
-
-                target_filename = f"{SYLLABUS_CODE}_CS_Worksheet.docx"
-                doc.save(target_filename)
-                with open(target_filename, "rb") as f:
-                    st.download_button(
-                        label="📥 Download Generated Word Document", 
-                        data=f, 
-                        file_name=target_filename,
-                        type="primary",
-                        use_container_width=True
-                    )
-            except Exception as e:
-                st.error(f"Error generating Word file: {e}")
+        st.download_button(
+            label="🪄 Download Word Document Worksheet",
+            data=doc_buffer,
+            file_name=target_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
     else:
         st.info("🛒 Your cart is currently empty. Search for questions in Tab 1 or Tab 2 and click '➕ Add to Cart' to merge pages here.")
 
@@ -468,8 +417,13 @@ with tab4:
 
     sf_col1, sf_col2, sf_col3 = st.columns(3)
     with sf_col1:
-        selected_sf_year = render_year_selector("sf")
-        sf_year = str(selected_sf_year)
+        # Simple text input for manual YYYY formatting
+        sf_year = st.text_input(
+            "Enter Year {use format YYYY}", 
+            value=str(datetime.datetime.now().year), 
+            placeholder="e.g., 2019, 2029, 2100", 
+            key="sf_pyp_year"
+        )
     with sf_col2:
         sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
         sf_m_code = "s" if "June" in sf_month else "w"
@@ -481,7 +435,8 @@ with tab4:
             key="sf_var"
         )
 
-    sf_short_year = sf_year[-2:]
+    # Safely derive the last two digits of the year
+    sf_short_year = sf_year.strip()[-2:] if len(sf_year.strip()) >= 2 else ""
     
     possible_zip_names = [
         f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_sf_{sf_variant}.zip",
@@ -519,15 +474,20 @@ with tab5:
     st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
-        selected_as_year = render_year_selector("as")
-        as_year = str(selected_as_year)
+        # Simple text input for manual YYYY formatting
+        as_year = st.text_input(
+            "Enter Year {use format YYYY}", 
+            value=str(datetime.datetime.now().year), 
+            placeholder="e.g., 2019, 2029, 2100", 
+            key="as_pyp_year"
+        )
     with col_m:
         as_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="as_mth")
         month_code = "s" if "June" in as_month else "w"
     with col_v:
         as_variant = st.selectbox("Select Variant Component", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="as_var")
 
-    short_year = as_year[-2:]
+    short_year = as_year.strip()[-2:] if len(as_year.strip()) >= 2 else ""
     expected_ms_filename = f"{SYLLABUS_CODE}_{month_code}{short_year}_ms_{as_variant}.pdf"
 
     st.markdown("---")
