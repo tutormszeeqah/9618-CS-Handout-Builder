@@ -1,19 +1,18 @@
 # ********** Computer Science 9618 PYP Portal ***********
 import io
 import os
-import re
 import fitz  # PyMuPDF
 import streamlit as st
 
 # Word Document Libraries
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches
 from docx.enum.section import WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-# Google API Libraries (Service Account Authentication)
+# Google API Libraries
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -65,7 +64,6 @@ st.markdown("""
 SYLLABUS_CODE = "9618"
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# Map local folder names to secret keys
 LOCAL_FOLDERS = {
     "theory": "9618Theory",
     "practical": "9618Practical",
@@ -73,7 +71,6 @@ LOCAL_FOLDERS = {
     "zips": "9618Zip"
 }
 
-# Ensure local directories exist
 for folder_path in LOCAL_FOLDERS.values():
     os.makedirs(folder_path, exist_ok=True)
 
@@ -147,10 +144,9 @@ def perform_bulk_sync():
 
 
 # ==========================================
-# 3. HELPER FUNCTIONS: WORD DOCS & PREVIEWS
+# 3. HELPER FUNCTIONS
 # ==========================================
 def add_page_number_to_run(run):
-    """Inserts a dynamic Word page number field."""
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
     instrText = OxmlElement('w:instrText')
@@ -168,7 +164,6 @@ def add_page_number_to_run(run):
     r.append(fldChar3)
 
 def render_pdf_page_preview(filepath: str, page_num: int = 0):
-    """Renders a single PDF page into PNG image bytes for previewing."""
     try:
         doc = fitz.open(filepath)
         page = doc.load_page(page_num)
@@ -180,12 +175,43 @@ def render_pdf_page_preview(filepath: str, page_num: int = 0):
         st.error(f"Unable to render page preview: {e}")
         return None
 
+def execute_pdf_search(folder_key: str, keyword_string: str) -> list[dict]:
+    """Performs full-text search across a specific local folder and returns page matches."""
+    results = []
+    keywords = [k.strip().lower() for k in keyword_string.split(",") if k.strip()]
+    folder_path = LOCAL_FOLDERS[folder_key]
+    
+    if os.path.exists(folder_path):
+        for file in os.listdir(folder_path):
+            if file.endswith(".pdf"):
+                filepath = os.path.join(folder_path, file)
+                try:
+                    doc = fitz.open(filepath)
+                    for page_num in range(len(doc)):
+                        text = doc[page_num].get_text().lower()
+                        if all(kw in text for kw in keywords):
+                            results.append({
+                                "file": file, 
+                                "page": page_num, 
+                                "path": filepath
+                            })
+                    doc.close()
+                except Exception:
+                    continue
+    return results
+
 
 # ==========================================
 # 4. APP STATE INITIALIZATION
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
+
+# Persistent Search Results State (Prevents disappearing on button click)
+if 'theory_search_results' not in st.session_state:
+    st.session_state.theory_search_results = []
+if 'practical_search_results' not in st.session_state:
+    st.session_state.practical_search_results = []
 
 if 'has_auto_synced' not in st.session_state:
     st.session_state.has_auto_synced = True
@@ -217,8 +243,9 @@ with st.sidebar:
         st.rerun()
 
 # --- NAVIGATION TABS ---
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🔍 Theory Search", 
+    "💻 Practical Search",
     "🔑 Answer Scheme", 
     "📅 View Exam Papers", 
     "📝 Export Handout", 
@@ -227,50 +254,91 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 ])
 
 
-# --- TAB 1: THEORY SEARCH ---
+# --- TAB 1: THEORY SEARCH (P1 & P3) ---
 with tab1:
-    st.header("Search CS Theory & Practical Papers")
-    keyword_input = st.text_input("Enter Keywords", placeholder="e.g., binary tree, recursion, pipeline", key="t1_kw")
+    st.header("🔍 Search Theory Papers (Papers 1 & 3)")
+    t_kw = st.text_input("Enter Keywords for Theory", placeholder="e.g., binary tree, recursion, pipeline", key="theory_kw")
 
-    if st.button("Search Papers", type="primary"):
-        if keyword_input.strip():
-            results = []
-            keywords = [k.strip().lower() for k in keyword_input.split(",") if k.strip()]
-            
-            for folder_key in ["theory", "practical"]:
-                folder_path = LOCAL_FOLDERS[folder_key]
-                for file in os.listdir(folder_path):
-                    if file.endswith(".pdf"):
-                        filepath = os.path.join(folder_path, file)
-                        try:
-                            doc = fitz.open(filepath)
-                            for page_num in range(len(doc)):
-                                text = doc[page_num].get_text().lower()
-                                if all(kw in text for kw in keywords):
-                                    results.append({"file": file, "page": page_num, "path": filepath})
-                            doc.close()
-                        except Exception:
-                            continue
+    if st.button("Search Theory Papers", type="primary", key="btn_search_theory"):
+        if t_kw.strip():
+            with st.spinner("Scanning Theory PDFs..."):
+                st.session_state.theory_search_results = execute_pdf_search("theory", t_kw)
+        else:
+            st.warning("Please enter a keyword.")
 
-            st.write(f"Found **{len(results)}** matching page(s):")
-            for idx, item in enumerate(results):
-                with st.expander(f"📄 {item['file']} | Page {item['page'] + 1}"):
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        preview_img = render_pdf_page_preview(item["path"], item["page"])
-                        if preview_img:
-                            st.image(preview_img, use_container_width=True)
-                    with c2:
-                        if st.button("➕ Add to Basket", key=f"add_t1_{idx}"):
-                            st.session_state.handout_basket.append(item)
-                            st.toast("Added to basket!")
+    if st.session_state.theory_search_results:
+        st.write(f"Found **{len(st.session_state.theory_search_results)}** matching page(s):")
+        for idx, item in enumerate(st.session_state.theory_search_results):
+            with st.expander(f"📄 {item['file']} | Page {item['page'] + 1}"):
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    preview_img = render_pdf_page_preview(item["path"], item["page"])
+                    if preview_img:
+                        st.image(preview_img, use_container_width=True)
+                with c2:
+                    # 1. Add to Basket
+                    if st.button("➕ Add to Basket", key=f"add_t_{idx}"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added Page {item['page'] + 1} to basket!")
+                        st.rerun()
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # 2. Download Full PDF
+                    with open(item["path"], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f,
+                            file_name=item["file"],
+                            mime="application/pdf",
+                            key=f"dl_t_{idx}"
+                        )
 
 
-# --- TAB 2: ANSWER SCHEME FINDER ---
+# --- TAB 2: PRACTICAL SEARCH (P4) ---
 with tab2:
-    st.header("🔑 Answer Scheme Finder (Marking Schemes)")
-    st.caption("Locate, preview, and download official Cambridge Marking Schemes.")
+    st.header("💻 Search Practical Papers (Paper 4)")
+    p_kw = st.text_input("Enter Keywords for Practical", placeholder="e.g., OOP, stacks, file handling", key="practical_kw")
 
+    if st.button("Search Practical Papers", type="primary", key="btn_search_practical"):
+        if p_kw.strip():
+            with st.spinner("Scanning Practical PDFs..."):
+                st.session_state.practical_search_results = execute_pdf_search("practical", p_kw)
+        else:
+            st.warning("Please enter a keyword.")
+
+    if st.session_state.practical_search_results:
+        st.write(f"Found **{len(st.session_state.practical_search_results)}** matching page(s):")
+        for idx, item in enumerate(st.session_state.practical_search_results):
+            with st.expander(f"📄 {item['file']} | Page {item['page'] + 1}"):
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    preview_img = render_pdf_page_preview(item["path"], item["page"])
+                    if preview_img:
+                        st.image(preview_img, use_container_width=True)
+                with c2:
+                    # 1. Add to Basket
+                    if st.button("➕ Add to Basket", key=f"add_p_{idx}"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added Page {item['page'] + 1} to basket!")
+                        st.rerun()
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # 2. Download Full PDF
+                    with open(item["path"], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f,
+                            file_name=item["file"],
+                            mime="application/pdf",
+                            key=f"dl_p_{idx}"
+                        )
+
+
+# --- TAB 3: ANSWER SCHEME FINDER ---
+with tab3:
+    st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
         as_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="as_yr")
@@ -278,18 +346,12 @@ with tab2:
         as_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="as_mth")
         month_code = "s" if "June" in as_month else "w"
     with col_v:
-        as_variant = st.selectbox(
-            "Select Variant Component", 
-            ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], 
-            key="as_var"
-        )
+        as_variant = st.selectbox("Select Variant Component", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="as_var")
 
     short_year = as_year[-2:]
     expected_ms_filename = f"{SYLLABUS_CODE}_{month_code}{short_year}_ms_{as_variant}.pdf"
 
     st.markdown("---")
-    
-    # Check both the dedicated Answer Scheme folder and local mirrors
     found_ms_path = None
     for folder_path in [LOCAL_FOLDERS["answer_scheme"], LOCAL_FOLDERS["theory"], LOCAL_FOLDERS["practical"]]:
         check_path = os.path.join(folder_path, expected_ms_filename)
@@ -299,38 +361,22 @@ with tab2:
 
     if found_ms_path:
         st.success(f"✅ Found Answer Scheme: `{expected_ms_filename}`")
+        with open(found_ms_path, "rb") as f:
+            st.download_button("📥 Download Answer Scheme PDF", f, file_name=expected_ms_filename, mime="application/pdf", type="primary")
         
-        col_btn1, col_btn2 = st.columns([1, 1])
-        with col_btn1:
-            with open(found_ms_path, "rb") as f:
-                st.download_button(
-                    label="📥 Download Answer Scheme PDF",
-                    data=f,
-                    file_name=expected_ms_filename,
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True
-                )
-        
-        with st.expander("👁️ Click to Expand & Preview Answer Scheme Document"):
-            try:
-                doc = fitz.open(found_ms_path)
-                total_pages = len(doc)
-                doc.close()
-                st.info(f"Document contains {total_pages} page(s). Rendering previews below:")
-                
-                for p in range(total_pages):
-                    img_data = render_pdf_page_preview(found_ms_path, p)
-                    if img_data:
-                        st.image(img_data, caption=f"Page {p + 1} of {total_pages}", use_container_width=True)
-            except Exception as e:
-                st.error(f"Error rendering PDF document: {e}")
+        with st.expander("👁️ Preview Answer Scheme Document"):
+            doc = fitz.open(found_ms_path)
+            for p in range(len(doc)):
+                img_data = render_pdf_page_preview(found_ms_path, p)
+                if img_data:
+                    st.image(img_data, caption=f"Page {p + 1}", use_container_width=True)
+            doc.close()
     else:
-        st.warning(f"⚠️ Answer Scheme `{expected_ms_filename}` was not found locally. Click 'Sync Google Drive' in the sidebar to download standard archives.")
+        st.warning(f"⚠️ Answer Scheme `{expected_ms_filename}` was not found locally.")
 
 
-# --- TAB 3: VIEW EXAM PAPERS ---
-with tab3:
+# --- TAB 4: VIEW EXAM PAPERS ---
+with tab4:
     st.header("📅 Download Full Question Papers & Marking Schemes")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -365,12 +411,11 @@ with tab3:
             st.info(f"MS `{ms_name}` not found locally.")
 
 
-# --- TAB 4: EXPORT HANDOUT ---
-with tab4:
+# --- TAB 5: EXPORT HANDOUT ---
+with tab5:
     st.header("📝 Generate Custom Word Worksheet")
     if st.session_state.handout_basket:
         st.write(f"Selected Pages: **{len(st.session_state.handout_basket)}**")
-        
         if st.button("🪄 Export Handout to Word (.docx)", type="primary"):
             try:
                 doc = Document()
@@ -405,26 +450,66 @@ with tab4:
             except Exception as e:
                 st.error(f"Error generating Word file: {e}")
     else:
-        st.info("Basket is empty. Add pages from Tab 1.")
+        st.info("Basket is empty. Add pages from Tab 1 or Tab 2.")
 
 
-# --- TAB 5: SOURCE FILES ---
-with tab5:
-    st.header("📦 Download Practical Source Files & Evidence")
-    st.caption("Access ZIP source files and supporting document archives.")
-    
-    sf_files = os.listdir(LOCAL_FOLDERS["zips"])
-    if sf_files:
-        selected_sf = st.selectbox("Select File", sf_files)
-        sf_path = os.path.join(LOCAL_FOLDERS["zips"], selected_sf)
-        with open(sf_path, "rb") as f:
-            st.download_button(f"📥 Download {selected_sf}", f, file_name=selected_sf, type="primary")
-    else:
-        st.info("No source files found in local storage.")
-
-
-# --- TAB 6: ADMIN DASHBOARD (DIRECT DRIVE REDIRECTS) ---
+# --- TAB 6: SOURCE FILES (FILTERED) ---
 with tab6:
+    st.header("📦 Download Practical Source Files & Evidence")
+    st.caption("Select the exam parameters to locate and download practical ZIP archives.")
+
+    sf_col1, sf_col2, sf_col3 = st.columns(3)
+    with sf_col1:
+        sf_year = st.selectbox("Select Year", [str(y) for y in range(2026, 2020, -1)], key="sf_yr")
+    with sf_col2:
+        sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
+        sf_m_code = "s" if "June" in sf_month else "w"
+    with sf_col3:
+        # Default variant suggestion based on exam session
+        default_variant = "43" if "June" in sf_month else "42"
+        sf_variant = st.selectbox(
+            "Select Practical Variant", 
+            ["41", "42", "43"], 
+            index=2 if "June" in sf_month else 1,
+            key="sf_var"
+        )
+
+    sf_short_year = sf_year[-2:]
+    
+    # Try different common zip naming conventions
+    possible_zip_names = [
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_sf_{sf_variant}.zip",
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_zip_{sf_variant}.zip",
+        f"{SYLLABUS_CODE}_{sf_m_code}{sf_short_year}_source_{sf_variant}.zip"
+    ]
+
+    st.markdown("---")
+    found_zip_path = None
+    matched_zip_name = ""
+
+    for zip_candidate in possible_zip_names:
+        candidate_path = os.path.join(LOCAL_FOLDERS["zips"], zip_candidate)
+        if os.path.exists(candidate_path):
+            found_zip_path = candidate_path
+            matched_zip_name = zip_candidate
+            break
+
+    if found_zip_path:
+        st.success(f"✅ Found Practical Source File Archive: `{matched_zip_name}`")
+        with open(found_zip_path, "rb") as zip_f:
+            st.download_button(
+                label=f"📥 Download Source File Archive ({matched_zip_name})",
+                data=zip_f,
+                file_name=matched_zip_name,
+                mime="application/zip",
+                type="primary"
+            )
+    else:
+        st.warning(f"⚠️ Source file archive for Year {sf_year}, Session {sf_month}, Variant {sf_variant} was not found in local storage.")
+
+
+# --- TAB 7: ADMIN DASHBOARD ---
+with tab7:
     st.header("⚙️ Admin Dashboard")
     st.caption("Direct shortcuts to Google Drive folder dashboards for fast file uploads and management.")
 
@@ -435,40 +520,19 @@ with tab6:
         st.success("🔓 Authenticated as Administrator")
         st.markdown("---")
         st.subheader("📁 Google Drive Upload Dashboards")
-        st.write("Click any button below to open the corresponding Google Drive folder in a new tab for direct file uploads:")
 
         drive_links = st.secrets.get("drive_web_links", {})
 
         col_a, col_b = st.columns(2)
         with col_a:
-            st.link_button(
-                "📘 Open Theory Drive Folder", 
-                drive_links.get("theory", "https://drive.google.com"), 
-                type="primary", 
-                use_container_width=True
-            )
+            st.link_button("📘 Open Theory Drive Folder", drive_links.get("theory", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button(
-                "🔑 Open Answer Scheme Drive Folder", 
-                drive_links.get("answer_scheme", "https://drive.google.com"), 
-                type="primary", 
-                use_container_width=True
-            )
+            st.link_button("🔑 Open Answer Scheme Drive Folder", drive_links.get("answer_scheme", "https://drive.google.com"), type="primary", use_container_width=True)
 
         with col_b:
-            st.link_button(
-                "💻 Open Practical Drive Folder", 
-                drive_links.get("practical", "https://drive.google.com"), 
-                type="primary", 
-                use_container_width=True
-            )
+            st.link_button("💻 Open Practical Drive Folder", drive_links.get("practical", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button(
-                "📦 Open Source File Zip Drive Folder", 
-                drive_links.get("zips", "https://drive.google.com"), 
-                type="primary", 
-                use_container_width=True
-            )
+            st.link_button("📦 Open Source File Zip Drive Folder", drive_links.get("zips", "https://drive.google.com"), type="primary", use_container_width=True)
 
     elif pwd_input:
         st.error("❌ Incorrect Admin Password.")
