@@ -1,4 +1,5 @@
 # ********** Computer Science 9618 PYP Portal ***********
+import datetime
 import io
 import os
 import fitz  # PyMuPDF
@@ -57,6 +58,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
 # ==========================================
 # 1. CONFIGURATION & DIRECTORY SETUP
 # ==========================================
@@ -72,6 +74,7 @@ LOCAL_FOLDERS = {
 
 for folder_path in LOCAL_FOLDERS.values():
     os.makedirs(folder_path, exist_ok=True)
+
 
 # ==========================================
 # 2. SERVICE ACCOUNT AUTHENTICATION & SYNC
@@ -140,11 +143,47 @@ def perform_bulk_sync():
         messages.append(msg)
     return total_synced, messages
 
+
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
+def render_year_selector(key_prefix: str, default_year: int = None) -> int:
+    """Generates an interactive year selector with + and - buttons dynamically."""
+    if default_year is None:
+        default_year = datetime.datetime.now().year
+
+    state_key = f"{key_prefix}_selected_year"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = default_year
+
+    st.markdown("<label style='font-weight: bold;'>Select Year</label>", unsafe_allow_html=True)
+    col_dec, col_val, col_inc = st.columns([1, 2, 1])
+
+    with col_dec:
+        if st.button("➖", key=f"{key_prefix}_dec_btn", use_container_width=True):
+            st.session_state[state_key] -= 1
+            st.rerun()
+
+    with col_val:
+        current_val = st.number_input(
+            "Year",
+            min_value=2020,
+            max_value=2050,
+            value=st.session_state[state_key],
+            key=f"{key_prefix}_num_input",
+            label_visibility="collapsed"
+        )
+        st.session_state[state_key] = current_val
+
+    with col_inc:
+        if st.button("➕", key=f"{key_prefix}_inc_btn", use_container_width=True):
+            st.session_state[state_key] += 1
+            st.rerun()
+
+    return st.session_state[state_key]
+
 def add_page_number_to_run(run):
-    """Adds a dynamic word field for Page numbers in header/footer."""
+    """Adds a dynamic Word field for Page numbers in header/footer."""
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
     instrText = OxmlElement('w:instrText')
@@ -199,6 +238,7 @@ def execute_pdf_search(folder_key: str, keyword_string: str) -> list[dict]:
                     continue
     return results
 
+
 # ==========================================
 # 4. APP STATE INITIALIZATION
 # ==========================================
@@ -214,6 +254,7 @@ if 'has_auto_synced' not in st.session_state:
     st.session_state.has_auto_synced = True
     with st.spinner("🚀 Waking up portal & auto-syncing files via Service Account..."):
         perform_bulk_sync()
+
 
 # ==========================================
 # 5. STREAMLIT UI LAYOUT
@@ -247,6 +288,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔑 Answer Scheme", 
     "⚙️ Upload PYP Admin"
 ])
+
 
 # --- TAB 1: SEARCH KEYWORD THEORY ---
 with tab1:
@@ -286,6 +328,7 @@ with tab1:
                             key=f"dl_t_{idx}"
                         )
 
+
 # --- TAB 2: SEARCH KEYWORD PRACTICAL ---
 with tab2:
     st.header("💻 Search Keyword (Practical - Paper 4)")
@@ -324,15 +367,15 @@ with tab2:
                             key=f"dl_p_{idx}"
                         )
 
+
 # --- TAB 3: HANDOUT / CART ---
-with tab5 if False else tab3:
+with tab3:
     st.header("🛒 Worksheet Management")
     
     if st.session_state.handout_basket:
         st.subheader("Selected Pages in Your Cart")
         st.markdown("Review your items below. Click **DELETE** to remove an individual page.")
         
-        # Display each item with an individual Delete button
         for idx, item in enumerate(st.session_state.handout_basket):
             col_info, col_action = st.columns([4, 1])
             with col_info:
@@ -351,10 +394,16 @@ with tab5 if False else tab3:
             try:
                 doc = Document()
                 section = doc.sections[0]
-                section.orientation = WD_ORIENT.PORTRAIT
-                section.top_margin = Inches(0.5)
-                section.bottom_margin = Inches(0.5)
+                
+                # --- SPECIFIED PAGE DIMENSIONS & MARGINS ---
+                section.page_width = Inches(8.5)
+                section.page_height = Inches(11.5)
+                section.top_margin = Inches(0.4)
+                section.bottom_margin = Inches(0.4)
+                section.left_margin = Inches(0.5)
+                section.right_margin = Inches(0.5)
 
+                # --- TOP CENTER PAGE NUMBER HEADER ---
                 header = section.header
                 header_p = header.paragraphs[0]
                 header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -369,7 +418,10 @@ with tab5 if False else tab3:
                     page = pdf_doc.load_page(item['page'])
                     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                     img_data = io.BytesIO(pix.tobytes("png"))
-                    doc.add_picture(img_data, width=Inches(6.5))
+                    
+                    # --- SPECIFIED IMAGE DIMENSIONS (Width 8.0", Height 9.5") ---
+                    doc.add_picture(img_data, width=Inches(8.0), height=Inches(9.5))
+                    
                     if idx < len(st.session_state.handout_basket) - 1:
                         doc.add_page_break()
                     pdf_doc.close()
@@ -389,6 +441,7 @@ with tab5 if False else tab3:
     else:
         st.info("🛒 Your cart is currently empty. Search for questions in Tab 1 or Tab 2 and click '➕ Add to Cart' to merge pages here.")
 
+
 # --- TAB 4: SOURCE FILE ---
 with tab4:
     st.header("📦 Download Practical Source Files & Evidence")
@@ -396,14 +449,16 @@ with tab4:
 
     sf_col1, sf_col2, sf_col3 = st.columns(3)
     with sf_col1:
-        sf_year = st.selectbox("Select Year", [str(y) for y in range(2028, 2020, -1)], key="sf_yr")
+        # Dynamic + / - Year Stepper
+        selected_sf_year = render_year_selector("sf")
+        sf_year = str(selected_sf_year)
     with sf_col2:
         sf_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="sf_mth")
         sf_m_code = "s" if "June" in sf_month else "w"
     with sf_col3:
         sf_variant = st.selectbox(
             "Select Practical Variant", 
-            ["42", "43"], 
+            ["41", "42", "43"], 
             index=2 if "June" in sf_month else 1,
             key="sf_var"
         )
@@ -446,12 +501,14 @@ with tab5:
     st.header("🔑 Answer Scheme Finder (Marking Schemes)")
     col_y, col_m, col_v = st.columns(3)
     with col_y:
-        as_year = st.selectbox("Select Year", [str(y) for y in range(2028, 2020, -1)], key="as_yr")
+        # Dynamic + / - Year Stepper
+        selected_as_year = render_year_selector("as")
+        as_year = str(selected_as_year)
     with col_m:
         as_month = st.selectbox("Select Session", ["June (s)", "November (w)"], key="as_mth")
         month_code = "s" if "June" in as_month else "w"
     with col_v:
-        as_variant = st.selectbox("Select Variant Component", ["11", "13", "22", "23", "32", "33", "42", "43"], key="as_var")
+        as_variant = st.selectbox("Select Variant Component", ["11", "12", "13", "21", "22", "23", "31", "32", "33", "41", "42", "43"], key="as_var")
 
     short_year = as_year[-2:]
     expected_ms_filename = f"{SYLLABUS_CODE}_{month_code}{short_year}_ms_{as_variant}.pdf"
@@ -478,6 +535,7 @@ with tab5:
             doc.close()
     else:
         st.warning(f"⚠️ Answer Scheme `{expected_ms_filename}` was not found locally.")
+
 
 # --- TAB 6: UPLOAD PYP ADMIN ---
 with tab6:
@@ -507,6 +565,7 @@ with tab6:
 
     elif pwd_input:
         st.error("❌ Incorrect Admin Password.")
+
 
 # ==========================================
 # 6. PORTAL FOOTER
