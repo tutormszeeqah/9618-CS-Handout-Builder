@@ -96,7 +96,10 @@ def build_drive_service():
         return None
 
 def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
-    """Downloads missing files from Google Drive to local directories."""
+    """
+    Downloads missing files from Google Drive to local directories using 
+    pagination to ensure all uploaded items are detected.
+    """
     service = build_drive_service()
     if not service:
         return 0, "Failed to authenticate Service Account."
@@ -108,12 +111,30 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
         return 0, f"Missing drive_folder_id for `{folder_key}` in secrets.toml."
 
     local_path = LOCAL_FOLDERS[folder_key]
+    
     try:
         query = f"'{drive_folder_id}' in parents and trashed = false"
-        results = service.files().list(q=query, fields="files(id, name, mimeType)").execute()
-        drive_files = results.get('files', [])
+        drive_files = []
+        page_token = None
+
+        # --- PAGINATION LOOP: Retrieve all pages of files from Google Drive ---
+        while True:
+            response = service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token,
+                pageSize=100
+            ).execute()
+            
+            drive_files.extend(response.get('files', []))
+            page_token = response.get('nextPageToken', None)
+            
+            if not page_token:
+                break
+
         downloaded_count = 0
 
+        # --- DOWNLOAD MISSING FILES LOCAL STORAGE ---
         for file_info in drive_files:
             file_name = file_info['name']
             file_id = file_info['id']
@@ -128,7 +149,10 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
                         _, done = downloader.next_chunk()
                 downloaded_count += 1
 
-        return downloaded_count, f"Synced {downloaded_count} file(s) for `{folder_key}`."
+        total_local_files = len([f for f in os.listdir(local_path) if os.path.isfile(os.path.join(local_path, f))])
+        
+        return downloaded_count, f"Synced {downloaded_count} new file(s) for `{folder_key}` (Total in folder: {total_local_files})."
+        
     except Exception as e:
         return 0, f"Sync error for `{folder_key}`: {e}"
 
