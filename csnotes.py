@@ -1,322 +1,339 @@
-import os
+import datetime
 import io
-import tempfile
+import os
 import fitz  # PyMuPDF
 import streamlit as st
+
+# Word Document Libraries
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from google.oauth2.service_account import Credentials
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+# Google API Libraries
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload
 
 # ==========================================
 # 0. STREAMLIT PAGE CONFIG & CUSTOM STYLING
 # ==========================================
 st.set_page_config(
-    page_title="9618 Computer Science PYP Archives", 
+    page_title="9618 Computer Science Portal", 
     page_icon="💻",
     layout="wide"
 )
 
-# Custom CSS Theme Implementation (Preserving your exact color scheme)
+# Custom Styling Theme
 st.markdown("""
     <style>
-    /* Main Page Background */
-    .stApp {
-        background-color: #E6BBFC !important;
-    }
-    
-    /* Sidebar Background */
-    [data-testid="stSidebar"], [data-testid="stSidebar"] > div:first-child {
-        background-color: #C663F8 !important;
-    }
-    
-    /* Ensure all Markdown and standard text in Sidebar is crisp and dark */
-    [data-testid="stSidebar"] p, 
-    [data-testid="stSidebar"] span, 
-    [data-testid="stSidebar"] div,
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3 {
-        color: #2D004B !important;
-    }
-
-    /* Metric Label and Value Contrast Fix in Sidebar */
-    [data-testid="stMetricValue"] {
-        color: #2D004B !important;
-        font-weight: bold !important;
-    }
-    [data-testid="stMetricLabel"] p {
-        color: #2D004B !important;
-    }
-
-    /* Input Fields & Select Boxes */
-    div[data-baseweb="input"], 
-    div[data-baseweb="select"] > div, 
-    .stTextInput input, 
-    .stSelectbox select {
+    .stApp { background-color: #E6BBFC !important; }
+    [data-testid="stSidebar"] { background-color: #C663F8 !important; }
+    [data-testid="stSidebar"] > div:first-child { background-color: #C663F8 !important; }
+    div[data-baseweb="input"], div[data-baseweb="select"] > div, .stTextInput input, .stSelectbox select {
         background-color: #BBFCBC !important;
         color: #070F9C !important;
         border-radius: 8px !important;
         border: 1px solid #620092 !important;
     }
-
-    /* Labels */
-    label, .stWidgetLabel p {
-        color: #2D004B !important;
-        font-weight: bold !important;
-    }
-    
-    input {
-        color: #070F9C !important;
-    }
-
-    /* Custom Button Styling */
-    div.stButton > button {
-        background-color: #BBFCBC !important;
-        color: #070F9C !important;
-        border: 1px solid #620092 !important;
-        border-radius: 8px !important;
-        font-weight: bold !important;
-    }
-    
-    div.stButton > button:hover {
-        background-color: #9bf09d !important;
-        color: #070F9C !important;
-    }
+    label, .stWidgetLabel p { color: #2D004B !important; font-weight: bold !important; }
+    input { color: #070F9C !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# Local folder directories mapped to folder keys
+
+# ==========================================
+# 1. CONFIGURATION & DIRECTORY SETUP
+# ==========================================
+SYLLABUS_CODE = "9618"
+SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+BASE_DIR = "9618HandOuts"
+
+# Folder paths mapped under the main 9618HandOuts directory
 LOCAL_FOLDERS = {
-    "paper1": "9618HandOuts/9618P1C1_C8",
-    "paper2": "9618HandOuts/9618P2C9_C12",
-    "paper3": "9618HandOuts/9618P3C13_C16",
-    "paper4": "9618HandOuts/9618P4C17_C20",
-    "other_notes": "9618HandOuts/Other9618Notes"
+    "paper1": os.path.join(BASE_DIR, "9618P1C1_C8"),
+    "paper2": os.path.join(BASE_DIR, "9618P2C9_C12"),
+    "paper3": os.path.join(BASE_DIR, "9618P3C13_C16"),
+    "paper4": os.path.join(BASE_DIR, "9618P4C17_C20"),
+    "other_notes": os.path.join(BASE_DIR, "Other9618Notes")
 }
 
-# Chapter options mapping per paper
+# Auto-filter Chapter breakdown for syllabus 9618
 PAPER_CHAPTER_MAPPING = {
-    "paper1": [f"Chapter {i}" for i in range(1, 9)],
-    "paper2": [f"Chapter {i}" for i in range(9, 13)],
-    "paper3": [f"Chapter {i}" for i in range(13, 17)],
-    "paper4": [f"Chapter {i}" for i in range(17, 21)]
+    "paper1": [f"Chapter {i}" for i in range(1, 9)],    # Chapters 1 to 8
+    "paper2": [f"Chapter {i}" for i in range(9, 13)],   # Chapters 9 to 12
+    "paper3": [f"Chapter {i}" for i in range(13, 17)],  # Chapters 13 to 16
+    "paper4": [f"Chapter {i}" for i in range(17, 21)]   # Chapters 17 to 20
 }
 
-# Ensure directories exist locally
-for folder in LOCAL_FOLDERS.values():
-    os.makedirs(folder, exist_ok=True)
-
-# Initialize Session State
-if "handout_basket" not in st.session_state:
-    st.session_state.handout_basket = []
-
-for p_key in ["paper1", "paper2", "paper3", "paper4"]:
-    if f"{p_key}_results" not in st.session_state:
-        st.session_state[f"{p_key}_results"] = []
+# Create local directories automatically if they do not exist
+for folder_path in LOCAL_FOLDERS.values():
+    os.makedirs(folder_path, exist_ok=True)
 
 
 # ==========================================
-# 1. GOOGLE DRIVE SERVICES & SYNC ENGINE
+# 2. GOOGLE DRIVE SERVICE & SYNC ENGINE
 # ==========================================
-def get_gdrive_service():
-    """Authenticates using Streamlit Service Account Secrets."""
-    scopes = ["https://www.googleapis.com/auth/drive"]
-    creds_dict = st.secrets["gcp_service_account"]
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return build("drive", "v3", credentials=credentials)
+def build_drive_service():
+    """Authenticates using Google Service Account credentials stored in st.secrets."""
+    try:
+        if "gcp_service_account" in st.secrets:
+            service_account_info = dict(st.secrets["gcp_service_account"])
+            creds = service_account.Credentials.from_service_account_info(
+                service_account_info, 
+                scopes=SCOPES
+            )
+            return build('drive', 'v3', credentials=creds)
+        else:
+            st.error("❌ Missing [gcp_service_account] section in secrets.toml.")
+            return None
+    except Exception as e:
+        st.error(f"❌ Service Account Authentication Error: {e}")
+        return None
 
-def sync_single_folder(service, folder_id: str, local_dir: str) -> tuple[int, str]:
-    """Downloads missing PDF files from Google Drive to local directory."""
-    if not folder_id:
-        return 0, f"No Folder ID configured for directory {local_dir}"
+def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
+    """Downloads missing PDF files from Google Drive to the target local folder."""
+    service = build_drive_service()
+    if not service:
+        return 0, "Failed to authenticate Service Account."
     
-    query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
-    drive_files = results.get("files", [])
+    folder_ids = st.secrets.get("drive_folders", {})
+    drive_folder_id = folder_ids.get(folder_key)
     
-    download_count = 0
-    for file in drive_files:
-        local_filepath = os.path.join(local_dir, file["name"])
-        if not os.path.exists(local_filepath):
-            request = service.files().get_media(fileId=file["id"])
-            with open(local_filepath, "wb") as f:
-                downloader = MediaIoBaseDownload(f, request)
-                done = False
-                while not done:
-                    _, done = downloader.next_chunk()
-            download_count += 1
+    if not drive_folder_id:
+        return 0, f"Missing drive_folder_id for `{folder_key}` in secrets.toml."
+
+    local_path = LOCAL_FOLDERS[folder_key]
+    
+    try:
+        query = f"'{drive_folder_id}' in parents and trashed = false"
+        drive_files = []
+        page_token = None
+
+        while True:
+            response = service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token,
+                pageSize=100
+            ).execute()
             
-    total_files = len([f for f in os.listdir(local_dir) if f.endswith(".pdf")])
-    return download_count, f"Synced {download_count} new file(s) for `{os.path.basename(local_dir)}` (Total local: {total_files})."
+            drive_files.extend(response.get('files', []))
+            page_token = response.get('nextPageToken', None)
+            if not page_token:
+                break
+
+        downloaded_count = 0
+        for file_info in drive_files:
+            file_name = file_info['name']
+            file_id = file_info['id']
+            local_file_path = os.path.join(local_path, file_name)
+
+            if not os.path.exists(local_file_path):
+                request = service.files().get_media(fileId=file_id)
+                with open(local_file_path, "wb") as f:
+                    downloader = MediaIoBaseDownload(f, request)
+                    done = False
+                    while not done:
+                        _, done = downloader.next_chunk()
+                downloaded_count += 1
+
+        total_local = len([f for f in os.listdir(local_path) if os.path.isfile(os.path.join(local_path, f))])
+        return downloaded_count, f"Synced {downloaded_count} new file(s) for `{folder_key}` (Total local: {total_local})."
+        
+    except Exception as e:
+        return 0, f"Sync error for `{folder_key}`: {e}"
 
 def perform_bulk_sync():
-    """Syncs all 5 Google Drive folders to local storage."""
-    try:
-        service = get_gdrive_service()
-        folder_secrets = st.secrets["gdrive_folders"]
-        
-        folder_mapping = {
-            "paper1": (folder_secrets.get("paper1_id"), LOCAL_FOLDERS["paper1"]),
-            "paper2": (folder_secrets.get("paper2_id"), LOCAL_FOLDERS["paper2"]),
-            "paper3": (folder_secrets.get("paper3_id"), LOCAL_FOLDERS["paper3"]),
-            "paper4": (folder_secrets.get("paper4_id"), LOCAL_FOLDERS["paper4"]),
-            "other_notes": (folder_secrets.get("other_notes_id"), LOCAL_FOLDERS["other_notes"]),
-        }
-        
-        total_downloaded = 0
-        messages = []
-        for key, (f_id, l_dir) in folder_mapping.items():
-            dl_cnt, msg = sync_single_folder(service, f_id, l_dir)
-            total_downloaded += dl_cnt
-            messages.append(msg)
-            
-        return total_downloaded, messages
-    except Exception as e:
-        return 0, [f"Error during Drive Sync: {str(e)}"]
-
-def upload_file_to_gdrive(uploaded_file, target_folder_key: str) -> tuple[bool, str]:
-    """Uploads user selected PDF from Admin Tab to Google Drive."""
-    try:
-        service = get_gdrive_service()
-        folder_id = st.secrets["gdrive_folders"].get(f"{target_folder_key}_id")
-        
-        if not folder_id:
-            return False, "Folder ID not found in secrets."
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            tmp_path = tmp_file.name
-
-        file_metadata = {
-            "name": uploaded_file.name,
-            "parents": [folder_id]
-        }
-        media = MediaFileUpload(tmp_path, mimetype="application/pdf")
-        
-        service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        os.remove(tmp_path)
-        
-        # Trigger immediate sync to update local storage
-        perform_bulk_sync()
-        return True, f"Successfully uploaded `{uploaded_file.name}` to Google Drive!"
-    except Exception as e:
-        return False, f"Upload failed: {str(e)}"
+    """Syncs all 5 local directories with their corresponding Google Drive folders."""
+    total_synced = 0
+    messages = []
+    for f_key in LOCAL_FOLDERS.keys():
+        count, msg = sync_drive_folder_to_local(f_key)
+        total_synced += count
+        messages.append(msg)
+    return total_synced, messages
 
 
 # ==========================================
-# 2. SEARCH & PDF PREVIEW GENERATOR
+# 3. HELPER FUNCTIONS (DOCX & PDF PREVIEW)
 # ==========================================
-def render_pdf_page_preview(filepath: str, page_num: int) -> bytes:
-    """Renders a PDF page to PNG image bytes."""
+def add_page_number_to_run(run):
+    """Inserts native Word field codes for dynamic page numbers in headers."""
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+    
+    r = run._r
+    r.append(fldChar1)
+    r.append(instrText)
+    r.append(fldChar2)
+    r.append(fldChar3)
+
+def create_worksheet_docx(basket_items: list) -> io.BytesIO:
+    """Generates the dynamic Word document (.docx) handout in memory."""
+    doc = Document()
+    section = doc.sections[0]
+
+    # Page Margins & Setup
+    section.page_width = Inches(8.5)
+    section.page_height = Inches(11.0)
+    section.top_margin = Inches(0.4)
+    section.bottom_margin = Inches(0.4)
+    section.left_margin = Inches(0.5)
+    section.right_margin = Inches(0.5)
+
+    # Dynamic Top Header
+    header = section.header
+    header_p = header.paragraphs[0]
+    header_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    header_run = header_p.add_run("Page ")
+    add_page_number_to_run(header_run)
+
+    doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+
+    for idx, item in enumerate(basket_items):
+        doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        pdf_doc = fitz.open(item['path'])
+        page = pdf_doc.load_page(item['page'])
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        img_data = io.BytesIO(pix.tobytes("png"))
+
+        doc.add_picture(img_data, width=Inches(7.5))
+
+        if idx < len(basket_items) - 1:
+            doc.add_page_break()
+        pdf_doc.close()
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+def render_pdf_page_preview(filepath: str, page_num: int = 0):
+    """Renders a single PDF page into PNG byte format for display."""
     try:
         doc = fitz.open(filepath)
-        page = doc[page_num]
-        pix = page.get_pixmap(dpi=150)
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
         img_bytes = pix.tobytes("png")
         doc.close()
         return img_bytes
-    except Exception:
+    except Exception as e:
+        st.error(f"Unable to render page preview: {e}")
         return None
 
 def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter: str) -> list[dict]:
-    """Searches paper folder and other notes for keywords."""
+    """
+    Performs full-text search across BOTH the specified Paper folder 
+    AND the shared Other9618Notes folder.
+    """
     results = []
     keywords = [k.strip().lower() for k in keyword_string.split(",") if k.strip()]
+    
+    # Folders to scan: Paper Specific Directory + Other Notes Directory
     target_folders = [LOCAL_FOLDERS[paper_key], LOCAL_FOLDERS["other_notes"]]
 
     for folder_path in target_folders:
-        if not os.path.exists(folder_path):
-            continue
+        if os.path.exists(folder_path):
+            for file in os.listdir(folder_path):
+                if file.endswith(".pdf"):
+                    # Apply Chapter Filtering if a specific chapter is selected
+                    if selected_chapter != "All Chapters":
+                        chap_num = selected_chapter.split(" ")[1]  # Extract number e.g. '1'
+                        file_lower = file.lower()
+                        # Checks matching patterns: ch1, chapter1, chapter 1
+                        if f"ch{chap_num}" not in file_lower and f"chapter{chap_num}" not in file_lower and f"chapter {chap_num}" not in file_lower:
+                            # Skip files that don't match the chapter filter (unless in Other Notes)
+                            if folder_path != LOCAL_FOLDERS["other_notes"]:
+                                continue
 
-        for file in os.listdir(folder_path):
-            if not file.endswith(".pdf"):
-                continue
-
-            if selected_chapter != "All Chapters" and folder_path == LOCAL_FOLDERS[paper_key]:
-                chap_num = selected_chapter.split(" ")[1]
-                file_lower = file.lower()
-                
-                p_ch = f"ch{chap_num}"
-                p_chap = f"chapter{chap_num}"
-                p_chap_space = f"chapter {chap_num}"
-                
-                if p_ch not in file_lower and p_chap not in file_lower and p_chap_space not in file_lower:
-                    continue
-
-            filepath = os.path.join(folder_path, file)
-            try:
-                doc = fitz.open(filepath)
-                for page_num in range(len(doc)):
-                    raw_text = doc[page_num].get_text()
-                    normalized_text = " ".join(raw_text.lower().split())
-                    
-                    if all(kw in normalized_text for kw in keywords):
-                        results.append({
-                            "file": file, 
-                            "page": page_num, 
-                            "path": filepath
-                        })
-                doc.close()
-            except Exception:
-                continue
-
+                    filepath = os.path.join(folder_path, file)
+                    try:
+                        doc = fitz.open(filepath)
+                        for page_num in range(len(doc)):
+                            text = doc[page_num].get_text().lower()
+                            if all(kw in text for kw in keywords):
+                                results.append({
+                                    "file": file, 
+                                    "page": page_num, 
+                                    "path": filepath
+                                })
+                        doc.close()
+                    except Exception:
+                        continue
     return results
 
 
 # ==========================================
-# 3. WORD HANDOUT GENERATOR
+# 4. APP STATE INITIALIZATION
 # ==========================================
-def generate_docx_handout(basket_items: list[dict]) -> io.BytesIO:
-    """Compiles selected PDF page snapshots into a Word Document (.docx)."""
-    doc = Document()
-    
-    title = doc.add_heading("A-Level Computer Science (9618) Handout", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    subtitle = doc.add_paragraph("Custom Topical Reference Materials")
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle.runs[0].font.italic = True
-    subtitle.runs[0].font.size = Pt(11)
-    
-    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+if 'handout_basket' not in st.session_state:
+    st.session_state.handout_basket = []
 
-    for idx, item in enumerate(basket_items, start=1):
-        heading = doc.add_heading(f"Item {idx}: {item['file']} (Page {item['page'] + 1})", level=2)
-        heading.paragraph_format.space_before = Pt(12)
-        heading.paragraph_format.space_after = Pt(6)
+for p in ["paper1", "paper2", "paper3", "paper4"]:
+    if f"{p}_results" not in st.session_state:
+        st.session_state[f"{p}_results"] = []
 
-        img_bytes = render_pdf_page_preview(item["path"], item["page"])
-        if img_bytes:
-            image_stream = io.BytesIO(img_bytes)
-            doc.add_picture(image_stream, width=Inches(6.0))
-            last_paragraph = doc.paragraphs[-1]
-            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            last_paragraph.paragraph_format.space_after = Pt(18)
-
-    output_stream = io.BytesIO()
-    doc.save(output_stream)
-    output_stream.seek(0)
-    return output_stream
+if 'has_auto_synced' not in st.session_state:
+    st.session_state.has_auto_synced = True
+    with st.spinner("🚀 Waking up portal & auto-syncing files from Google Drive..."):
+        perform_bulk_sync()
 
 
 # ==========================================
-# 4. TAB CONTENT RENDERER
+# 5. STREAMLIT UI LAYOUT & TABS
 # ==========================================
+st.title("PUSAT TINGKATAN ENAM SENGKURONG")
+st.subheader(f"💻 {SYLLABUS_CODE} Computer Science Topical Portal")
+
+# Sidebar Controls
+with st.sidebar:
+    st.header("🔄 Google Drive Sync")
+    if st.button("🔄 Sync Google Drive", type="primary", use_container_width=True):
+        with st.spinner("Syncing Google Drive folders..."):
+            count, msgs = perform_bulk_sync()
+            st.success(f"🎉 Sync Complete! {count} new file(s) downloaded.")
+            for m in msgs:
+                st.caption(m)
+
+    st.markdown("---")
+    st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
+
+    if st.button("🗑️ Clear Entire Basket", use_container_width=True):
+        st.session_state.handout_basket = []
+        st.rerun()
+
+# 6 Navigation Tabs
+tabs = st.tabs([
+    "📘 Paper 1 (Ch 1–8)", 
+    "📗 Paper 2 (Ch 9–12)", 
+    "📙 Paper 3 (Ch 13–16)", 
+    "📕 Paper 4 (Ch 17–20)", 
+    "🛒 Basket / Cart", 
+    "⚙️ Upload & Admin"
+])
+
 def render_paper_tab(tab_object, paper_key: str, paper_title: str):
+    """Generates UI elements for Paper Tabs 1 to 4."""
     with tab_object:
         st.header(f"🔍 Search {paper_title}")
         
         col_kw, col_ch = st.columns([2, 1])
         with col_kw:
-            kw = st.text_input("Enter Keyword", placeholder="e.g., virtual memory, binary, stack", key=f"{paper_key}_kw")
+            kw = st.text_input(f"Enter Keyword", placeholder="e.g., binary, stack, subroutines", key=f"{paper_key}_kw")
         with col_ch:
             chapter_options = ["All Chapters"] + PAPER_CHAPTER_MAPPING[paper_key]
             selected_ch = st.selectbox("Select Chapter Filter", options=chapter_options, key=f"{paper_key}_chap")
 
-        if st.button(f"Search {paper_title}", key=f"btn_{paper_key}"):
+        if st.button(f"Search {paper_title}", type="primary", key=f"btn_{paper_key}"):
             if kw.strip():
                 with st.spinner(f"Scanning {paper_title} & Other Notes..."):
                     st.session_state[f"{paper_key}_results"] = execute_chapter_search(paper_key, kw, selected_ch)
@@ -349,116 +366,83 @@ def render_paper_tab(tab_object, paper_key: str, paper_title: str):
                                 key=f"dl_{paper_key}_{idx}"
                             )
 
+# Render Paper Tabs
+render_paper_tab(tabs[0], "paper1", "Paper 1 (Chapters 1–8)")
+render_paper_tab(tabs[1], "paper2", "Paper 2 (Chapters 9–12)")
+render_paper_tab(tabs[2], "paper3", "Paper 3 (Chapters 13–16)")
+render_paper_tab(tabs[3], "paper4", "Paper 4 (Chapters 17–20)")
 
-# ==========================================
-# 5. MAIN APPLICATION & NAVIGATION
-# ==========================================
-st.title("💻 Cambridge 9618 Computer Science PYP Archives")
-st.markdown("Search topical notes, preview past paper pages, and compile custom `.docx` handouts.")
 
-# Sidebar
-with st.sidebar:
-    st.header("🔄 Google Drive Sync")
-    if st.button("🔄 Sync Google Drive", use_container_width=True):
-        with st.spinner("Syncing Google Drive folders..."):
-            count, msgs = perform_bulk_sync()
-            st.success(f"🎉 Sync Complete! {count} new file(s) downloaded.")
-
-    st.markdown("---")
+# --- TAB 5: BASKET / CART ---
+with tabs[4]:
+    st.header("🛒 Worksheet Basket & Handout Generator")
     
-    st.subheader("📁 Local Storage Status")
-    for key, folder_path in LOCAL_FOLDERS.items():
-        if os.path.exists(folder_path):
-            file_count = len([f for f in os.listdir(folder_path) if f.endswith(".pdf")])
-            st.write(f"• **{key.capitalize()}**: `{file_count}` file(s)")
-        else:
-            st.write(f"• **{key.capitalize()}**: `Directory missing`")
-
-    st.markdown("---")
-    st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
-
-    if st.button("🗑️ Clear Entire Basket", use_container_width=True):
-        st.session_state.handout_basket = []
-        st.rerun()
-
-# Tabs
-tab1, tab2, tab3, tab4, tab_cart, tab_admin = st.tabs([
-    "📘 Paper 1 (Ch 1–8)",
-    "📗 Paper 2 (Ch 9–12)",
-    "📙 Paper 3 (Ch 13–16)",
-    "📕 Paper 4 (Ch 17–20)",
-    "🛒 Basket / Cart",
-    "⚙️ Admin / Upload"
-])
-
-# Render Paper Search Tabs
-render_paper_tab(tab1, "paper1", "Paper 1 (Chapters 1–8)")
-render_paper_tab(tab2, "paper2", "Paper 2 (Chapters 9–12)")
-render_paper_tab(tab3, "paper3", "Paper 3 (Chapters 13–16)")
-render_paper_tab(tab4, "paper4", "Paper 4 (Chapters 17–20)")
-
-# Render Basket Tab
-with tab_cart:
-    st.header("🛒 Selected Pages Basket")
-    
-    if not st.session_state.handout_basket:
-        st.info("Your basket is empty. Search for topics in Papers 1–4 and click '➕ Add to Cart' to add pages here.")
-    else:
-        st.write(f"Total items in basket: **{len(st.session_state.handout_basket)}**")
-        
-        for b_idx, b_item in enumerate(st.session_state.handout_basket):
-            with st.expander(f"Item {b_idx + 1}: {b_item['file']} (Page {b_item['page'] + 1})", expanded=False):
-                col_img, col_act = st.columns([3, 1])
-                with col_img:
-                    img = render_pdf_page_preview(b_item["path"], b_item["page"])
-                    if img:
-                        st.image(img, use_container_width=True)
-                with col_act:
-                    if st.button("❌ Remove Item", key=f"remove_basket_{b_idx}"):
-                        st.session_state.handout_basket.pop(b_idx)
-                        st.rerun()
-
-        st.markdown("---")
-        
-        docx_data = generate_docx_handout(st.session_state.handout_basket)
-        st.download_button(
-            label="🪄 Download Dynamic Word Document Handout (.docx)",
-            data=docx_data,
-            file_name="9618_Computer_Science_Handout.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-
-# Render Admin / Upload Tab
-with tab_admin:
-    st.header("⚙️ Admin - Upload PDF Files to Google Drive")
-    st.markdown("Select a PDF file from your computer and choose the destination folder on Google Drive.")
-    
-    col_target, col_up = st.columns([1, 2])
-    
-    with col_target:
-        target_folder = st.selectbox(
-            "Target Drive Folder",
-            options=["paper1", "paper2", "paper3", "paper4", "other_notes"],
-            format_func=lambda x: {
-                "paper1": "Paper 1 (Ch 1-8)",
-                "paper2": "Paper 2 (Ch 9-12)",
-                "paper3": "Paper 3 (Ch 13-16)",
-                "paper4": "Paper 4 (Ch 17-20)",
-                "other_notes": "Other 9618 Notes"
-            }[x]
-        )
-    
-    with col_up:
-        uploaded_pdf = st.file_uploader("Choose a PDF file to upload", type=["pdf"])
-        
-    if st.button("📤 Upload PDF to Google Drive"):
-        if uploaded_pdf is not None:
-            with st.spinner(f"Uploading `{uploaded_pdf.name}` to Google Drive..."):
-                success, msg = upload_file_to_gdrive(uploaded_pdf, target_folder)
-                if success:
-                    st.success(msg)
+    if st.session_state.handout_basket:
+        st.subheader("Selected Pages in Cart")
+        for idx, item in enumerate(st.session_state.handout_basket):
+            c_info, c_action = st.columns([4, 1])
+            with c_info:
+                st.markdown(f"📄 **Item {idx + 1}:** `{item['file']}` — **Page {item['page'] + 1}**")
+            with c_action:
+                if st.button("🔴 DELETE", key=f"del_cart_{idx}"):
+                    st.session_state.handout_basket.pop(idx)
+                    st.toast(f"Removed item {idx + 1} from basket.")
                     st.rerun()
-                else:
-                    st.error(msg)
-        else:
-            st.warning("Please select a PDF file first.")
+            st.markdown("---")
+
+        st.subheader("📝 Export Options")
+        doc_buffer = create_worksheet_docx(st.session_state.handout_basket)
+        st.download_button(
+            label="🪄 Download Dynamic Word Document Handout",
+            data=doc_buffer,
+            file_name=f"{SYLLABUS_CODE}_Topical_Handout.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
+    else:
+        st.info("🛒 Your cart is currently empty. Search for topics across Paper Tabs 1–4 and click '➕ Add to Cart'.")
+
+
+# --- TAB 6: UPLOAD & ADMIN DASHBOARD ---
+with tabs[5]:
+    st.header("⚙️ Upload & Admin Dashboard")
+    st.caption("Access Google Drive upload destinations for adding new chapter PDFs, notes, and references.")
+
+    admin_pwd = st.secrets.get("ADMIN_PASSWORD", "")
+    pwd_input = st.text_input("Enter Admin Password", type="password")
+
+    if pwd_input and pwd_input == admin_pwd:
+        st.success("🔓 Authenticated as Administrator")
+        st.markdown("---")
+        drive_links = st.secrets.get("drive_web_links", {})
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.link_button("📘 Open Paper 1 Drive (Ch 1–8)", drive_links.get("paper1", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.link_button("📙 Open Paper 3 Drive (Ch 13–16)", drive_links.get("paper3", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.link_button("📁 Open Other Notes Drive Folder", drive_links.get("other_notes", "https://drive.google.com"), type="primary", use_container_width=True)
+        with col_b:
+            st.link_button("📗 Open Paper 2 Drive (Ch 9–12)", drive_links.get("paper2", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.link_button("📕 Open Paper 4 Drive (Ch 17–20)", drive_links.get("paper4", "https://drive.google.com"), type="primary", use_container_width=True)
+    elif pwd_input:
+        st.error("❌ Incorrect Admin Password.")
+
+
+# ==========================================
+# 6. PORTAL FOOTER
+# ==========================================
+st.markdown("---")
+SCHOOL_NAME = "Pusat Tingkatan Enam Sengkurong (PTES)"
+SCHOOL_VISION = "Nurturing Resilient Leaders & Future-Ready Citizens"
+
+footer_html = f"""
+<div style="text-align: center; padding: 15px 0px; color: #2D004B; font-family: sans-serif;">
+    <p style="margin: 0; font-size: 1.0em; font-weight: bold;">🏫 {SCHOOL_NAME}</p>
+    <p style="margin: 5px 0; font-size: 0.9em; font-style: italic;">"{SCHOOL_VISION}"</p>
+</div>
+"""
+st.markdown(footer_html, unsafe_allow_html=True)
