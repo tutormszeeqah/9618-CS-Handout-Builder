@@ -392,8 +392,8 @@ def render_paper_tab(tab_object, paper_key: str, paper_title: str):
 # Render Paper Tabs
 render_paper_tab(tabs[0], "paper1", "Paper 1 (Chapters 1–8)")
 render_paper_tab(tabs[1], "paper2", "Paper 2 (Chapters 9–12)")
-render_paper_tab(tabs[2], "paper3", "Paper 3 (Chapters 13–16)")
-render_paper_tab(tabs[3], "paper4", "Paper 4 (Chapters 17–20)")
+render_paper_tab(tabs[2], "paper3", "Paper 3 (Chapters 13–18)")
+render_paper_tab(tabs[3], "paper4", "Paper 4 (Chapters 10,11,19,20)")
 
 
 # --- TAB 5: BASKET / CART ---
@@ -444,13 +444,13 @@ with tabs[5]:
         with col_a:
             st.link_button("📘 Open Paper 1 Drive (Ch 1–8)", drive_links.get("paper1", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button("📙 Open Paper 3 Drive (Ch 13–16)", drive_links.get("paper3", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.link_button("📙 Open Paper 3 Drive (Ch 13–18)", drive_links.get("paper3", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
             st.link_button("📁 Open Other Notes Drive Folder", drive_links.get("other_notes", "https://drive.google.com"), type="primary", use_container_width=True)
         with col_b:
             st.link_button("📗 Open Paper 2 Drive (Ch 9–12)", drive_links.get("paper2", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button("📕 Open Paper 4 Drive (Ch 17–20)", drive_links.get("paper4", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.link_button("📕 Open Paper 4 Drive (Ch 9,10,19,20)", drive_links.get("paper4", "https://drive.google.com"), type="primary", use_container_width=True)
     elif pwd_input:
         st.error("❌ Incorrect Admin Password.")
 
