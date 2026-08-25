@@ -18,6 +18,56 @@ st.set_page_config(
     layout="wide"
 )
 
+# Apply Custom Color Theme & Styling
+CUSTOM_CSS = """
+<style>
+    /* Main App Background & Primary Font Styling */
+    .stApp {
+        background-color: #f8f9fa;
+    }
+    
+    /* Custom Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #2c3e50;
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
+        color: #ecf0f1 !important;
+    }
+    
+    /* Headers & Accent Colors */
+    h1, h2, h3 {
+        color: #2c3e50;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Primary Buttons Styling */
+    div.stButton > button[kind="primary"] {
+        background-color: #3498db;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #2980b9;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Custom Metric & Status Card Container */
+    .status-card {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 5px solid #3498db;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 10px;
+    }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
 # Local folder directories mapped to folder keys
 LOCAL_FOLDERS = {
     "paper1": "9618HandOuts/9618P1C1_C8",
@@ -131,7 +181,6 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
     results = []
     keywords = [k.strip().lower() for k in keyword_string.split(",") if k.strip()]
     
-    # Folders to scan: Paper Specific + Shared Other Notes
     target_folders = [LOCAL_FOLDERS[paper_key], LOCAL_FOLDERS["other_notes"]]
 
     for folder_path in target_folders:
@@ -142,12 +191,11 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
             if not file.endswith(".pdf"):
                 continue
 
-            # Apply chapter filter ONLY if specific chapter is selected AND scanning the main paper folder
+            # Apply chapter filter ONLY if a specific chapter is selected AND scanning the main paper folder
             if selected_chapter != "All Chapters" and folder_path == LOCAL_FOLDERS[paper_key]:
                 chap_num = selected_chapter.split(" ")[1]
                 file_lower = file.lower()
                 
-                # Check for variations like 'ch2', 'chapter2', or 'chapter 2'
                 p_ch = f"ch{chap_num}"
                 p_chap = f"chapter{chap_num}"
                 p_chap_space = f"chapter {chap_num}"
@@ -159,11 +207,10 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
             try:
                 doc = fitz.open(filepath)
                 for page_num in range(len(doc)):
-                    # Extract page text and normalize spacing/newlines
+                    # Extract text and normalize spaces/newlines
                     raw_text = doc[page_num].get_text()
                     normalized_text = " ".join(raw_text.lower().split())
                     
-                    # Verify all entered keywords exist on the page
                     if all(kw in normalized_text for kw in keywords):
                         results.append({
                             "file": file, 
@@ -184,7 +231,6 @@ def generate_docx_handout(basket_items: list[dict]) -> io.BytesIO:
     """Compiles selected PDF page snapshots into a dynamic Word Document handout."""
     doc = Document()
     
-    # Title Section
     title = doc.add_heading("A-Level Computer Science (9618) Handout", level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
@@ -195,7 +241,6 @@ def generate_docx_handout(basket_items: list[dict]) -> io.BytesIO:
     
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Process items in basket
     for idx, item in enumerate(basket_items, start=1):
         heading = doc.add_heading(f"Item {idx}: {item['file']} (Page {item['page'] + 1})", level=2)
         heading.paragraph_format.space_before = Pt(12)
@@ -270,7 +315,7 @@ def render_paper_tab(tab_object, paper_key: str, paper_title: str):
 st.title("💻 Cambridge 9618 Computer Science Portal")
 st.markdown("Search topical notes, preview pages, and compile dynamic `.docx` handouts.")
 
-# Sidebar Configuration
+# Sidebar Layout
 with st.sidebar:
     st.header("🔄 Google Drive Sync")
     if st.button("🔄 Sync Google Drive", type="primary", use_container_width=True):
@@ -282,7 +327,7 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # Local Storage Breakdown Status
+    # Local Storage Status Card
     st.subheader("📁 Local Storage Status")
     for key, folder_path in LOCAL_FOLDERS.items():
         if os.path.exists(folder_path):
@@ -298,7 +343,7 @@ with st.sidebar:
         st.session_state.handout_basket = []
         st.rerun()
 
-# Application Main Navigation Tabs
+# Navigation Tabs
 tab1, tab2, tab3, tab4, tab_cart = st.tabs([
     "📘 Paper 1 (Ch 1–8)",
     "📗 Paper 2 (Ch 9–12)",
@@ -313,7 +358,7 @@ render_paper_tab(tab2, "paper2", "Paper 2 (Chapters 9–12)")
 render_paper_tab(tab3, "paper3", "Paper 3 (Chapters 13–16)")
 render_paper_tab(tab4, "paper4", "Paper 4 (Chapters 17–20)")
 
-# Render Basket / Cart Tab
+# Render Cart Tab
 with tab_cart:
     st.header("🛒 Selected Pages Basket")
     
@@ -322,7 +367,6 @@ with tab_cart:
     else:
         st.write(f"Total items in basket: **{len(st.session_state.handout_basket)}**")
         
-        # Display selected item previews inside basket
         for b_idx, b_item in enumerate(st.session_state.handout_basket):
             with st.expander(f"Item {b_idx + 1}: {b_item['file']} (Page {b_item['page'] + 1})", expanded=False):
                 col_img, col_act = st.columns([3, 1])
@@ -337,7 +381,6 @@ with tab_cart:
 
         st.markdown("---")
         
-        # Word Document Export Button
         docx_data = generate_docx_handout(st.session_state.handout_basket)
         st.download_button(
             label="🪄 Download Dynamic Word Document Handout (.docx)",
