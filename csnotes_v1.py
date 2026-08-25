@@ -1,3 +1,4 @@
+# Portal use to extract keywords from the CIE textbook references from C1 to C20, start develop on 25th Aug 2026 *************
 import datetime
 import io
 import os
@@ -61,10 +62,10 @@ LOCAL_FOLDERS = {
 
 # Auto-filter Chapter breakdown for syllabus 9618
 PAPER_CHAPTER_MAPPING = {
-    "paper1": [f"Chapter {i}" for i in range(1, 9)],    # Chapters 1 to 8
-    "paper2": [f"Chapter {i}" for i in range(9, 13)],   # Chapters 9 to 12
-    "paper3": [f"Chapter {i}" for i in range(13, 17)],  # Chapters 13 to 16
-    "paper4": [f"Chapter {i}" for i in range(17, 21)]   # Chapters 17 to 20
+    "paper1": [f"Chapter {i}" for i in range(1, 9)],             # Chapters 1 to 8
+    "paper2": [f"Chapter {i}" for i in range(9, 13)],            # Chapters 9 to 12
+    "paper3": [f"Chapter {i}" for i in range(13, 19)],           # Chapters 13 to 16
+    "paper4": ["Chapter 10", "Chapter 11", "Chapter 19", "Chapter 20"]  # Chapters 10, 11, 19, 20
 }
 
 # Create local directories automatically if they do not exist
@@ -159,6 +160,7 @@ def perform_bulk_sync():
 # ==========================================
 # 3. HELPER FUNCTIONS (DOCX & PDF PREVIEW)
 # ==========================================
+
 def add_page_number_to_run(run):
     """Inserts native Word field codes for dynamic page numbers in headers."""
     fldChar1 = OxmlElement('w:fldChar')
@@ -178,11 +180,11 @@ def add_page_number_to_run(run):
     r.append(fldChar3)
 
 def create_worksheet_docx(basket_items: list) -> io.BytesIO:
-    """Generates the dynamic Word document (.docx) handout in memory."""
+    """Generates the dynamic Word document (.docx) handout with corrected image scaling."""
     doc = Document()
     section = doc.sections[0]
 
-    # Page Margins & Setup
+    # Page Margins & Setup (Standard Letter / A4 setup)
     section.page_width = Inches(8.5)
     section.page_height = Inches(11.0)
     section.top_margin = Inches(0.4)
@@ -197,25 +199,41 @@ def create_worksheet_docx(basket_items: list) -> io.BytesIO:
     header_run = header_p.add_run("Page ")
     add_page_number_to_run(header_run)
 
-    doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+    # Add Main Title Document Heading
+    main_heading = doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+    main_heading.paragraph_format.space_after = Inches(0.1)
 
     for idx, item in enumerate(basket_items):
-        doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        # Add heading for individual page source
+        heading = doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        heading.paragraph_format.space_before = Inches(0.1)
+        heading.paragraph_format.space_after = Inches(0.1)
+
+        # Open and render PDF page
         pdf_doc = fitz.open(item['path'])
         page = pdf_doc.load_page(item['page'])
+        
+        # Render high-resolution pixmap image
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
         img_data = io.BytesIO(pix.tobytes("png"))
 
-        doc.add_picture(img_data, width=Inches(7.5))
+        # Scaled image width to 6.5 inches to ensure heading + image fit on 1 page
+        img_paragraph = doc.add_paragraph()
+        img_paragraph.paragraph_format.space_after = Inches(0.0)
+        run = img_paragraph.add_run()
+        run.add_picture(img_data, width=Inches(6.5))
 
+        # Add page break only between items (not after the final item)
         if idx < len(basket_items) - 1:
             doc.add_page_break()
+            
         pdf_doc.close()
 
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+#==============================================================================================================================
 
 def render_pdf_page_preview(filepath: str, page_num: int = 0):
     """Renders a single PDF page into PNG byte format for display."""
@@ -296,7 +314,10 @@ st.subheader(f"💻 {SYLLABUS_CODE} Computer Science Topical Portal")
 
 # Sidebar Controls
 with st.sidebar:
-    st.header("🔄 Google Drive Sync")
+    st.title("⚙️ Control Panel")
+    st.markdown("---")
+    
+    st.subheader("🔄 Google Drive Sync")
     if st.button("🔄 Sync Google Drive", type="primary", use_container_width=True):
         with st.spinner("Syncing Google Drive folders..."):
             count, msgs = perform_bulk_sync()
@@ -305,20 +326,22 @@ with st.sidebar:
                 st.caption(m)
 
     st.markdown("---")
+    st.subheader("📊 Basket Summary")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
 
     if st.button("🗑️ Clear Entire Basket", use_container_width=True):
         st.session_state.handout_basket = []
+        st.toast("Basket cleared successfully.")
         st.rerun()
 
 # 6 Navigation Tabs
 tabs = st.tabs([
-    "📘 Paper 1 (Ch 1–8)", 
-    "📗 Paper 2 (Ch 9–12)", 
-    "📙 Paper 3 (Ch 13–16)", 
-    "📕 Paper 4 (Ch 17–20)", 
-    "🛒 Basket / Cart", 
-    "⚙️ Upload & Admin"
+    "📘 Theory P1 topics", 
+    "📗 Theory P2 topics", 
+    "📙 Theory P3 topics", 
+    "📕 Practical P4", 
+    "🛒 Notes/Cart", 
+    "⚙️ Upload/Admin"
 ])
 
 def render_paper_tab(tab_object, paper_key: str, paper_title: str):
@@ -369,8 +392,8 @@ def render_paper_tab(tab_object, paper_key: str, paper_title: str):
 # Render Paper Tabs
 render_paper_tab(tabs[0], "paper1", "Paper 1 (Chapters 1–8)")
 render_paper_tab(tabs[1], "paper2", "Paper 2 (Chapters 9–12)")
-render_paper_tab(tabs[2], "paper3", "Paper 3 (Chapters 13–16)")
-render_paper_tab(tabs[3], "paper4", "Paper 4 (Chapters 17–20)")
+render_paper_tab(tabs[2], "paper3", "Paper 3 (Chapters 13–18)")
+render_paper_tab(tabs[3], "paper4", "Paper 4 (Chapters 10,11,19,20)")
 
 
 # --- TAB 5: BASKET / CART ---
@@ -421,13 +444,13 @@ with tabs[5]:
         with col_a:
             st.link_button("📘 Open Paper 1 Drive (Ch 1–8)", drive_links.get("paper1", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button("📙 Open Paper 3 Drive (Ch 13–16)", drive_links.get("paper3", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.link_button("📙 Open Paper 3 Drive (Ch 13–18)", drive_links.get("paper3", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
             st.link_button("📁 Open Other Notes Drive Folder", drive_links.get("other_notes", "https://drive.google.com"), type="primary", use_container_width=True)
         with col_b:
             st.link_button("📗 Open Paper 2 Drive (Ch 9–12)", drive_links.get("paper2", "https://drive.google.com"), type="primary", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button("📕 Open Paper 4 Drive (Ch 17–20)", drive_links.get("paper4", "https://drive.google.com"), type="primary", use_container_width=True)
+            st.link_button("📕 Open Paper 4 Drive (Ch 9,10,19,20)", drive_links.get("paper4", "https://drive.google.com"), type="primary", use_container_width=True)
     elif pwd_input:
         st.error("❌ Incorrect Admin Password.")
 
