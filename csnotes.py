@@ -160,6 +160,7 @@ def perform_bulk_sync():
 # ==========================================
 # 3. HELPER FUNCTIONS (DOCX & PDF PREVIEW)
 # ==========================================
+
 def add_page_number_to_run(run):
     """Inserts native Word field codes for dynamic page numbers in headers."""
     fldChar1 = OxmlElement('w:fldChar')
@@ -179,11 +180,11 @@ def add_page_number_to_run(run):
     r.append(fldChar3)
 
 def create_worksheet_docx(basket_items: list) -> io.BytesIO:
-    """Generates the dynamic Word document (.docx) handout in memory."""
+    """Generates the dynamic Word document (.docx) handout with corrected image scaling."""
     doc = Document()
     section = doc.sections[0]
 
-    # Page Margins & Setup
+    # Page Margins & Setup (Standard Letter / A4 setup)
     section.page_width = Inches(8.5)
     section.page_height = Inches(11.0)
     section.top_margin = Inches(0.4)
@@ -198,25 +199,41 @@ def create_worksheet_docx(basket_items: list) -> io.BytesIO:
     header_run = header_p.add_run("Page ")
     add_page_number_to_run(header_run)
 
-    doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+    # Add Main Title Document Heading
+    main_heading = doc.add_heading(f'PTES {SYLLABUS_CODE} Computer Science Handout', level=1)
+    main_heading.paragraph_format.space_after = Inches(0.1)
 
     for idx, item in enumerate(basket_items):
-        doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        # Add heading for individual page source
+        heading = doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        heading.paragraph_format.space_before = Inches(0.1)
+        heading.paragraph_format.space_after = Inches(0.1)
+
+        # Open and render PDF page
         pdf_doc = fitz.open(item['path'])
         page = pdf_doc.load_page(item['page'])
+        
+        # Render high-resolution pixmap image
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
         img_data = io.BytesIO(pix.tobytes("png"))
 
-        doc.add_picture(img_data, width=Inches(7.5))
+        # Scaled image width to 6.5 inches to ensure heading + image fit on 1 page
+        img_paragraph = doc.add_paragraph()
+        img_paragraph.paragraph_format.space_after = Inches(0.0)
+        run = img_paragraph.add_run()
+        run.add_picture(img_data, width=Inches(6.5))
 
+        # Add page break only between items (not after the final item)
         if idx < len(basket_items) - 1:
             doc.add_page_break()
+            
         pdf_doc.close()
 
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+#==============================================================================================================================
 
 def render_pdf_page_preview(filepath: str, page_num: int = 0):
     """Renders a single PDF page into PNG byte format for display."""
