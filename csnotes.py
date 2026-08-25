@@ -336,12 +336,12 @@ with st.sidebar:
 
 # 6 Navigation Tabs
 tabs = st.tabs([
-    "📘 Paper 1 (Ch 1–8)", 
-    "📗 Paper 2 (Ch 9–12)", 
-    "📙 Paper 3 (Ch 13–16)", 
-    "📕 Paper 4 (Ch 17–20)", 
-    "🛒 Basket / Cart", 
-    "⚙️ Upload & Admin"
+    "📘 Theory P1 topics", 
+    "📗 Theory P2 topics", 
+    "📙 Theory P3 topics", 
+    "📕 Practical P4", 
+    "🛒 Notes/Cart", 
+    "⚙️ Upload/Admin"
 ])
 
 def render_paper_tab(tab_object, paper_key: str, paper_title: str):
