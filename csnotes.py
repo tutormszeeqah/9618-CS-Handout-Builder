@@ -1,5 +1,6 @@
 import os
 import io
+import tempfile
 import fitz  # PyMuPDF
 import streamlit as st
 from docx import Document
@@ -7,10 +8,10 @@ from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 # ==========================================
-# 1. PAGE CONFIGURATION & CONSTANTS
+# 1. PAGE CONFIGURATION & CLEAN STYLING
 # ==========================================
 st.set_page_config(
     page_title="9618 Computer Science Topical Portal",
@@ -18,51 +19,33 @@ st.set_page_config(
     layout="wide"
 )
 
-# Apply Custom Color Theme & Styling
+# Targeted High-Contrast Sidebar & Button CSS Fix
 CUSTOM_CSS = """
 <style>
-    /* Main App Background & Primary Font Styling */
-    .stApp {
-        background-color: #f8f9fa;
-    }
-    
-    /* Custom Sidebar Styling */
+    /* Dark Theme Sidebar styling with explicit bright white text */
     [data-testid="stSidebar"] {
-        background-color: #2c3e50;
-        color: #ffffff;
+        background-color: #1e293b;
     }
-    [data-testid="stSidebar"] stMarkdown, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
-        color: #ecf0f1 !important;
-    }
-    
-    /* Headers & Accent Colors */
-    h1, h2, h3 {
-        color: #2c3e50;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    [data-testid="stSidebar"] * {
+        color: #f8fafc !important;
     }
     
-    /* Primary Buttons Styling */
-    div.stButton > button[kind="primary"] {
-        background-color: #3498db;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        font-weight: bold;
-        transition: all 0.3s ease;
+    /* Fix Streamlit Metric text & numbers inside sidebar */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+        color: #ffffff !important;
     }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #2980b9;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+
+    /* Style Buttons for clear high contrast */
+    div.stButton > button {
+        border-radius: 6px;
+        font-weight: 600;
     }
     
-    /* Custom Metric & Status Card Container */
-    .status-card {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #3498db;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        margin-bottom: 10px;
+    /* Danger / Clear Basket Button */
+    div.stButton > button:contains("Clear Entire Basket") {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+        border: none !important;
     }
 </style>
 """
@@ -99,19 +82,19 @@ for p_key in ["paper1", "paper2", "paper3", "paper4"]:
 
 
 # ==========================================
-# 2. GOOGLE DRIVE AUTHENTICATION & SYNC
+# 2. GOOGLE DRIVE AUTHENTICATION & SYNC Engine
 # ==========================================
 def get_gdrive_service():
     """Authenticates using Streamlit Service Account Secrets."""
-    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    scopes = ["https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return build("drive", "v3", credentials=credentials)
 
 def sync_single_folder(service, folder_id: str, local_dir: str) -> tuple[int, str]:
-    """Downloads missing PDF files from a Google Drive folder to local directory."""
+    """Downloads missing PDF files from Google Drive to local directory."""
     if not folder_id:
-        return 0, f"No Folder ID found for directory {local_dir}"
+        return 0, f"No Folder ID configured for directory {local_dir}"
     
     query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
     results = service.files().list(q=query, fields="files(id, name)").execute()
@@ -133,7 +116,7 @@ def sync_single_folder(service, folder_id: str, local_dir: str) -> tuple[int, st
     return download_count, f"Synced {download_count} new file(s) for `{os.path.basename(local_dir)}` (Total local: {total_files})."
 
 def perform_bulk_sync():
-    """Runs sync across all 5 configured Google Drive folders."""
+    """Syncs all 5 Google Drive folders to local storage."""
     try:
         service = get_gdrive_service()
         folder_secrets = st.secrets["gdrive_folders"]
@@ -157,12 +140,41 @@ def perform_bulk_sync():
     except Exception as e:
         return 0, [f"Error during Drive Sync: {str(e)}"]
 
+def upload_file_to_gdrive(uploaded_file, target_folder_key: str) -> tuple[bool, str]:
+    """Uploads a user-selected file from the Admin Tab directly to Google Drive."""
+    try:
+        service = get_gdrive_service()
+        folder_id = st.secrets["gdrive_folders"].get(f"{target_folder_key}_id")
+        
+        if not folder_id:
+            return False, "Folder ID not found in secrets."
+
+        # Write uploaded bytes to a temporary local file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_path = tmp_file.name
+
+        file_metadata = {
+            "name": uploaded_file.name,
+            "parents": [folder_id]
+        }
+        media = MediaFileUpload(tmp_path, mimetype="application/pdf")
+        
+        service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        os.remove(tmp_path)
+        
+        # Trigger sync to pull newly uploaded file into local directory
+        perform_bulk_sync()
+        return True, f"Successfully uploaded `{uploaded_file.name}` to Google Drive!"
+    except Exception as e:
+        return False, f"Upload failed: {str(e)}"
+
 
 # ==========================================
-# 3. PDF RENDERING & SEARCH ENGINE LOGIC
+# 3. SEARCH ENGINE & PREVIEW GENERATOR
 # ==========================================
 def render_pdf_page_preview(filepath: str, page_num: int) -> bytes:
-    """Renders a PDF page to PNG image bytes for web preview and document export."""
+    """Renders a PDF page to PNG image bytes for web preview and docx export."""
     try:
         doc = fitz.open(filepath)
         page = doc[page_num]
@@ -174,13 +186,9 @@ def render_pdf_page_preview(filepath: str, page_num: int) -> bytes:
         return None
 
 def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter: str) -> list[dict]:
-    """
-    Performs full-text search across BOTH the specified Paper folder 
-    AND the shared Other9618Notes folder with robust chapter filtering.
-    """
+    """Performs full-text search across Paper folder AND shared Other Notes."""
     results = []
     keywords = [k.strip().lower() for k in keyword_string.split(",") if k.strip()]
-    
     target_folders = [LOCAL_FOLDERS[paper_key], LOCAL_FOLDERS["other_notes"]]
 
     for folder_path in target_folders:
@@ -191,7 +199,7 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
             if not file.endswith(".pdf"):
                 continue
 
-            # Apply chapter filter ONLY if a specific chapter is selected AND scanning the main paper folder
+            # Apply chapter filter ONLY if a specific chapter is selected AND scanning main paper folder
             if selected_chapter != "All Chapters" and folder_path == LOCAL_FOLDERS[paper_key]:
                 chap_num = selected_chapter.split(" ")[1]
                 file_lower = file.lower()
@@ -207,7 +215,6 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
             try:
                 doc = fitz.open(filepath)
                 for page_num in range(len(doc)):
-                    # Extract text and normalize spaces/newlines
                     raw_text = doc[page_num].get_text()
                     normalized_text = " ".join(raw_text.lower().split())
                     
@@ -225,7 +232,7 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
 
 
 # ==========================================
-# 4. WORD DOCUMENT EXPORT GENERATOR
+# 4. WORD DOCUMENT HANDOUT EXPORTER
 # ==========================================
 def generate_docx_handout(basket_items: list[dict]) -> io.BytesIO:
     """Compiles selected PDF page snapshots into a dynamic Word Document handout."""
@@ -310,12 +317,12 @@ def render_paper_tab(tab_object, paper_key: str, paper_title: str):
 
 
 # ==========================================
-# 6. APPLICATION MAIN LAYOUT
+# 6. APPLICATION MAIN LAYOUT & NAVIGATION
 # ==========================================
 st.title("💻 Cambridge 9618 Computer Science Portal")
 st.markdown("Search topical notes, preview pages, and compile dynamic `.docx` handouts.")
 
-# Sidebar Layout
+# Sidebar Configuration
 with st.sidebar:
     st.header("🔄 Google Drive Sync")
     if st.button("🔄 Sync Google Drive", type="primary", use_container_width=True):
@@ -327,7 +334,6 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # Local Storage Status Card
     st.subheader("📁 Local Storage Status")
     for key, folder_path in LOCAL_FOLDERS.items():
         if os.path.exists(folder_path):
@@ -343,13 +349,14 @@ with st.sidebar:
         st.session_state.handout_basket = []
         st.rerun()
 
-# Navigation Tabs
-tab1, tab2, tab3, tab4, tab_cart = st.tabs([
+# Application Main Navigation (Now includes 6th Admin Upload Tab)
+tab1, tab2, tab3, tab4, tab_cart, tab_admin = st.tabs([
     "📘 Paper 1 (Ch 1–8)",
     "📗 Paper 2 (Ch 9–12)",
     "📙 Paper 3 (Ch 13–16)",
     "📕 Paper 4 (Ch 17–20)",
-    "🛒 Basket / Cart"
+    "🛒 Basket / Cart",
+    "⚙️ Admin / Upload"
 ])
 
 # Render Search Tabs
@@ -358,7 +365,7 @@ render_paper_tab(tab2, "paper2", "Paper 2 (Chapters 9–12)")
 render_paper_tab(tab3, "paper3", "Paper 3 (Chapters 13–16)")
 render_paper_tab(tab4, "paper4", "Paper 4 (Chapters 17–20)")
 
-# Render Cart Tab
+# Render Basket / Cart Tab
 with tab_cart:
     st.header("🛒 Selected Pages Basket")
     
@@ -389,3 +396,38 @@ with tab_cart:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             type="primary"
         )
+
+# Render Admin / Upload Tab
+with tab_admin:
+    st.header("⚙️ Admin - Upload PDF Files to Google Drive")
+    st.markdown("Select a file from your computer and choose the destination folder on Google Drive.")
+    
+    col_target, col_up = st.columns([1, 2])
+    
+    with col_target:
+        target_folder = st.selectbox(
+            "Target Drive Folder",
+            options=["paper1", "paper2", "paper3", "paper4", "other_notes"],
+            format_func=lambda x: {
+                "paper1": "Paper 1 (Ch 1-8)",
+                "paper2": "Paper 2 (Ch 9-12)",
+                "paper3": "Paper 3 (Ch 13-16)",
+                "paper4": "Paper 4 (Ch 17-20)",
+                "other_notes": "Other 9618 Notes"
+            }[x]
+        )
+    
+    with col_up:
+        uploaded_pdf = st.file_uploader("Choose a PDF file to upload", type=["pdf"])
+        
+    if st.button("📤 Upload PDF to Google Drive", type="primary"):
+        if uploaded_pdf is not None:
+            with st.spinner(f"Uploading `{uploaded_pdf.name}` to Google Drive..."):
+                success, msg = upload_file_to_gdrive(uploaded_pdf, target_folder)
+                if success:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+        else:
+            st.warning("Please select a PDF file first.")
