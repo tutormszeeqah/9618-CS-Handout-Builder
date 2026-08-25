@@ -64,7 +64,7 @@ LOCAL_FOLDERS = {
 PAPER_CHAPTER_MAPPING = {
     "paper1": [f"Chapter {i}" for i in range(1, 9)],             # Chapters 1 to 8
     "paper2": [f"Chapter {i}" for i in range(9, 13)],            # Chapters 9 to 12
-    "paper3": [f"Chapter {i}" for i in range(13, 17)],           # Chapters 13 to 16
+    "paper3": [f"Chapter {i}" for i in range(13, 19)],           # Chapters 13 to 16
     "paper4": ["Chapter 10", "Chapter 11", "Chapter 19", "Chapter 20"]  # Chapters 10, 11, 19, 20
 }
 
