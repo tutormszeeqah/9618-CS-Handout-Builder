@@ -271,7 +271,6 @@ def execute_chapter_search(paper_key: str, keyword_string: str, selected_chapter
                         continue
     return results
 
-
 # ==========================================
 # 4. APP STATE INITIALIZATION
 # ==========================================
@@ -313,11 +312,11 @@ with st.sidebar:
 
 # 6 Navigation Tabs
 tabs = st.tabs([
-    "📘 Paper 1 (Ch 1–8)", 
-    "📗 Paper 2 (Ch 9–12)", 
-    "📙 Paper 3 (Ch 13–16)", 
-    "📕 Paper 4 (Ch 17–20)", 
-    "🛒 Basket / Cart", 
+    "📘 Paper1 Topics", 
+    "📗 Paper2 Topics", 
+    "📙 Paper3 Topics", 
+    "📕 Paper4 Topics", 
+    "🛒 Cart & Notes", 
     "⚙️ Upload & Admin"
 ])
 
